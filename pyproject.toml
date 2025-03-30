@@ -1,0 +1,18 @@
+[tool.flwr.app]
+name = "mnist-flower-app"
+
+[tool.flwr.app.config]
+num-partitions = 10
+num-server-rounds = 3
+local-epochs = 1
+batch-size = 32
+verbose = 0
+
+[project]
+name = "mnist_flower_app"
+version = "0.1.0"
+dependencies = [
+    "flwr >= 1.8.0",
+    "tensorflow",
+    "flwr-datasets >= 0.1.0"
+]
