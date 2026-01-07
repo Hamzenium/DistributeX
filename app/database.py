@@ -1,7 +1,38 @@
+import os
+import urllib.parse
+import certifi
 from pymongo import MongoClient
-from app.config import MONGO_URI, DB_NAME
+from dotenv import load_dotenv
 
-client = MongoClient(MONGO_URI)
-db = client[DB_NAME]
+load_dotenv()
+
+# Load env vars safely
+MONGO_USERNAME = os.getenv("MONGO_USERNAME")
+MONGO_PASSWORD = os.getenv("MONGO_PASSWORD")
+MONGO_CLUSTER = os.getenv("MONGO_CLUSTER")
+MONGO_DB = os.getenv("MONGO_DB", "hypertuneai")
+
+if not all([MONGO_USERNAME, MONGO_PASSWORD, MONGO_CLUSTER]):
+    raise RuntimeError("Missing MongoDB environment variables")
+
+username = urllib.parse.quote_plus(MONGO_USERNAME)
+password = urllib.parse.quote_plus(MONGO_PASSWORD)
+
+mongo_uri = (
+    f"mongodb+srv://{username}:{password}@{MONGO_CLUSTER}/"
+    f"{MONGO_DB}?retryWrites=true&w=majority"
+)
+
+try:
+    mongo_client = MongoClient(
+        mongo_uri,
+        tlsCAFile=certifi.where(),
+        serverSelectionTimeoutMS=5000
+    )
+    mongo_client.admin.command("ping")
+except Exception as e:
+    raise RuntimeError(f"MongoDB Connection Failed: {e}")
+
+db = mongo_client[MONGO_DB]
 
 users_collection = db["users"]

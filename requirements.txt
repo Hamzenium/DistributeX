@@ -1,6 +1,8 @@
 fastapi
+flask-jwt-extended
 uvicorn
+dotenv
+certifi
 pymongo
+psutil
 pydantic
-python-dotenv
-email-validator
