@@ -1,4 +1,4 @@
-##HyperTuneAI – Distributed Compute Node Platform
+## HyperTuneAI – Distributed Compute Node Platform
 
 ## Prerequisites
 
