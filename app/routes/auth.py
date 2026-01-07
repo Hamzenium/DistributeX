@@ -1,12 +1,11 @@
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
-
-from app.models import SignupRequest
 from app.database import users_collection
+from app.models import SignupRequest, SigninRequest
+from app.utils.security import hash_password, verify_password, create_access_token
 from app.utils.system_specs import get_system_specs
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
 
 @router.post("/signup")
 def signup(data: SignupRequest):
@@ -18,7 +17,7 @@ def signup(data: SignupRequest):
     user = {
         "username": data.username,
         "email": data.email,
-        "password": data.password,
+        "password": hash_password(data.password),
         "specs": specs,
         "status": "offline",
         "created_at": datetime.utcnow()
@@ -28,8 +27,24 @@ def signup(data: SignupRequest):
 
     return {
         "message": "Signup successful",
-        "node": {
-            "username": data.username,
-            "specs": specs
-        }
+        "username": data.username,
+        "specs": specs
+    }
+
+@router.post("/signin")
+def signin(data: SigninRequest):
+    user = users_collection.find_one({"email": data.email})
+
+    if not user or not verify_password(data.password, user["password"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = create_access_token({
+        "sub": str(user["_id"]),
+        "email": user["email"]
+    })
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "username": user["username"]
     }
