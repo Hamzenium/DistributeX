@@ -12,3 +12,4 @@ python-jose[cryptography]
 
 # Pydantic email validation
 email-validator
+aio_pika

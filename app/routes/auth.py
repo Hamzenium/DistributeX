@@ -1,11 +1,17 @@
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
+
 from app.database import users_collection
 from app.models import SignupRequest, SigninRequest
-from app.utils.security import hash_password, verify_password, create_access_token
+from app.utils.security import (
+    hash_password,
+    verify_password,
+    create_access_token,
+)
 from app.utils.system_specs import get_system_specs
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
 
 @router.post("/signup")
 def signup(data: SignupRequest):
@@ -20,16 +26,18 @@ def signup(data: SignupRequest):
         "password": hash_password(data.password),
         "specs": specs,
         "status": "offline",
-        "created_at": datetime.utcnow()
+        "owned_sessions": [],
+        "joined_sessions": [],
+        "listened_queue": None,
+        "created_at": datetime.utcnow(),
     }
 
     users_collection.insert_one(user)
 
     return {
-        "message": "Signup successful",
-        "username": data.username,
-        "specs": specs
+        "message": "Signup successful"
     }
+
 
 @router.post("/signin")
 def signin(data: SigninRequest):
@@ -38,13 +46,15 @@ def signin(data: SigninRequest):
     if not user or not verify_password(data.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    token = create_access_token({
-        "sub": str(user["_id"]),
-        "email": user["email"]
-    })
+    token = create_access_token(
+        {
+            "sub": str(user["_id"]),
+            "email": user["email"],
+        }
+    )
 
     return {
         "access_token": token,
         "token_type": "bearer",
-        "username": user["username"]
+        "username": user["username"],
     }
