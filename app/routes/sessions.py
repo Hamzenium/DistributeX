@@ -17,6 +17,7 @@ from app.utils.security import get_current_user_id
 from app.workers.peer_worker import peer_worker
 from app.workers.registry import workers
 from app.storage.s3 import s3
+from app.coordinator.coordinator import run_coordinator
 
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -54,14 +55,14 @@ async def start_session(
     """
     Create a session and immediately start computation.
 
-    This endpoint is ATOMIC:
-    - If peers are unavailable, NOTHING is created
-    - If it succeeds, session is RUNNING
+    ATOMIC guarantees:
+    - If peers are unavailable → nothing is created
+    - If this returns 200 → session is RUNNING and coordinator is live
     """
 
-    # --------------------------
-    # Validate user
-    # --------------------------
+    # --------------------------------------------------
+    # Validate owner
+    # --------------------------------------------------
     try:
         owner_id = ObjectId(user_id)
     except Exception:
@@ -71,9 +72,9 @@ async def start_session(
     if not owner:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # --------------------------
-    # Parse hyperparameters
-    # --------------------------
+    # --------------------------------------------------
+    # Parse & validate hyperparameters
+    # --------------------------------------------------
     try:
         hyperparams_list = json.loads(hyperparameters)
     except json.JSONDecodeError:
@@ -88,10 +89,9 @@ async def start_session(
             detail="Hyperparameters length must equal num_peers",
         )
 
-    # --------------------------
-    # Find available peers FIRST
-    # (fail early, no side effects)
-    # --------------------------
+    # --------------------------------------------------
+    # Find available peers FIRST (fail fast)
+    # --------------------------------------------------
     available_users = list(
         users_collection.find(
             {
@@ -107,14 +107,14 @@ async def start_session(
             detail="Not enough online peers available",
         )
 
-    # --------------------------
+    # --------------------------------------------------
     # Create session ID
-    # --------------------------
+    # --------------------------------------------------
     session_id = ObjectId()
 
-    # --------------------------
-    # Upload CSV to S3
-    # --------------------------
+    # --------------------------------------------------
+    # Upload dataset to S3
+    # --------------------------------------------------
     if not S3_BUCKET:
         raise HTTPException(status_code=500, detail="S3_BUCKET_NAME not configured")
 
@@ -133,23 +133,24 @@ async def start_session(
             detail=f"Failed to upload file to S3: {str(e)}",
         )
 
-    # --------------------------
+    # --------------------------------------------------
     # Build peers + lock users
-    # --------------------------
+    # --------------------------------------------------
     peers = []
 
     for user in available_users:
         peer_uid = str(user["_id"])
-        peer_queue = f"peer.{peer_uid}.command"
+        queue_name = f"peer.{peer_uid}.command"
 
         peers.append(
             {
                 "uid": peer_uid,
-                "peer_queue": peer_queue,
+                "peer_queue": queue_name,
                 "results": None,
             }
         )
 
+        # Lock peer immediately
         users_collection.update_one(
             {"_id": user["_id"]},
             {
@@ -158,9 +159,9 @@ async def start_session(
             },
         )
 
-    # --------------------------
+    # --------------------------------------------------
     # Create session document (RUNNING)
-    # --------------------------
+    # --------------------------------------------------
     session_doc = {
         "_id": session_id,
         "owner_user_id": owner_id,
@@ -186,12 +187,20 @@ async def start_session(
         {"$addToSet": {"owned_sessions": session_id}},
     )
 
+    # --------------------------------------------------
+    # Spawn coordinator (BACKGROUND PROCESS)
+    # --------------------------------------------------
+    Process(
+        target=run_coordinator,
+        args=(str(session_id),),
+        daemon=True,
+    ).start()
+
     return {
         "message": "Session started",
         "session_uid": str(session_id),
         "assigned_peers": peers,
     }
-
 
 # ============================================================================
 # Join Session (start worker)
