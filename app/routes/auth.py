@@ -25,7 +25,7 @@ def signup(data: SignupRequest):
         "email": data.email,
         "password": hash_password(data.password),
         "specs": specs,
-        "status": "offline",
+        "status": "OFFLINE",
         "owned_sessions": [],
         "joined_sessions": [],
         "listened_queue": None,

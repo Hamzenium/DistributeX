@@ -210,7 +210,7 @@ async def maybe_send_heartbeat(
     # --------------------------
     if training_state["active"]:
         payload = {
-            "session_uid": session_uid,
+            "peer_uid": session_uid,
             "loss": training_state["loss"],
         }
         body = json.dumps(payload).encode()
@@ -243,7 +243,7 @@ async def run_training_loop(training_state: dict):
 
     start = time.time()
     step = 0
-    print("Installing CSV From S3")
+    print("Downloading CSV From S3")
 
     while time.time() - start < TRAIN_DURATION:
         # Fake loss curve (decays over time)

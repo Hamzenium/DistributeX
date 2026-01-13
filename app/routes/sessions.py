@@ -44,22 +44,19 @@ def user_command_queue(session_uid: str) -> str:
 # Create Session (CSV + hyperparameters + ownership link)
 # ============================================================================
 
-@router.post("/create")
-async def create_session(
+@router.post("/start")
+async def start_session(
     num_peers: int = Form(...),
     hyperparameters: str = Form(...),
     file: UploadFile = File(...),
     user_id: str = Depends(get_current_user_id),
 ):
     """
-    Create a new distributed training session.
+    Create a session and immediately start computation.
 
-    This endpoint:
-    1. Validates the user
-    2. Validates hyperparameters
-    3. Uploads CSV to Stackhero S3
-    4. Creates a session document
-    5. Links session to user (owned_sessions)
+    This endpoint is ATOMIC:
+    - If peers are unavailable, NOTHING is created
+    - If it succeeds, session is RUNNING
     """
 
     # --------------------------
@@ -70,7 +67,8 @@ async def create_session(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid user id")
 
-    if not users_collection.find_one({"_id": owner_id}):
+    owner = users_collection.find_one({"_id": owner_id})
+    if not owner:
         raise HTTPException(status_code=404, detail="User not found")
 
     # --------------------------
@@ -79,21 +77,34 @@ async def create_session(
     try:
         hyperparams_list = json.loads(hyperparameters)
     except json.JSONDecodeError:
-        raise HTTPException(
-            status_code=400,
-            detail="Hyperparameters must be valid JSON",
-        )
+        raise HTTPException(status_code=400, detail="Hyperparameters must be valid JSON")
 
     if not isinstance(hyperparams_list, list):
-        raise HTTPException(
-            status_code=400,
-            detail="Hyperparameters must be a list of objects",
-        )
+        raise HTTPException(status_code=400, detail="Hyperparameters must be a list")
 
     if len(hyperparams_list) != num_peers:
         raise HTTPException(
             status_code=400,
-            detail="Number of hyperparameter objects must equal num_peers",
+            detail="Hyperparameters length must equal num_peers",
+        )
+
+    # --------------------------
+    # Find available peers FIRST
+    # (fail early, no side effects)
+    # --------------------------
+    available_users = list(
+        users_collection.find(
+            {
+                "status": "ONLINE",
+                "_id": {"$ne": owner_id},
+            }
+        ).limit(num_peers)
+    )
+
+    if len(available_users) < num_peers:
+        raise HTTPException(
+            status_code=400,
+            detail="Not enough online peers available",
         )
 
     # --------------------------
@@ -105,12 +116,9 @@ async def create_session(
     # Upload CSV to S3
     # --------------------------
     if not S3_BUCKET:
-        raise HTTPException(
-            status_code=500,
-            detail="S3_BUCKET_NAME not configured",
-        )
+        raise HTTPException(status_code=500, detail="S3_BUCKET_NAME not configured")
 
-    s3_key = f"dataset.csv"
+    s3_key = f"sessions/{session_id}/dataset.csv"
 
     try:
         s3.upload_fileobj(
@@ -126,7 +134,32 @@ async def create_session(
         )
 
     # --------------------------
-    # Create session document
+    # Build peers + lock users
+    # --------------------------
+    peers = []
+
+    for user in available_users:
+        peer_uid = str(user["_id"])
+        peer_queue = f"peer.{peer_uid}.command"
+
+        peers.append(
+            {
+                "uid": peer_uid,
+                "peer_queue": peer_queue,
+                "results": None,
+            }
+        )
+
+        users_collection.update_one(
+            {"_id": user["_id"]},
+            {
+                "$set": {"status": "TRAINING"},
+                "$addToSet": {"joined_sessions": session_id},
+            },
+        )
+
+    # --------------------------
+    # Create session document (RUNNING)
     # --------------------------
     session_doc = {
         "_id": session_id,
@@ -138,31 +171,25 @@ async def create_session(
             "original_filename": file.filename,
         },
         "hyperparameters": hyperparams_list,
-        "status": "CREATED",
+        "status": "RUNNING",
         "created_at": datetime.utcnow(),
-        "started_at": None,
+        "started_at": datetime.utcnow(),
         "completed_at": None,
+        "peers": peers,
     }
 
     sessions_collection.insert_one(session_doc)
 
-    # --------------------------
-    # Link session to user
-    # --------------------------
+    # Link session to owner
     users_collection.update_one(
         {"_id": owner_id},
-        {
-            "$addToSet": {
-                "owned_sessions": session_id
-            }
-        }
+        {"$addToSet": {"owned_sessions": session_id}},
     )
 
     return {
-        "message": "Session created successfully",
+        "message": "Session started",
         "session_uid": str(session_id),
-        "num_peers": num_peers,
-        "dataset_s3_key": s3_key,
+        "assigned_peers": peers,
     }
 
 
@@ -173,11 +200,7 @@ async def create_session(
 @router.post("/join")
 async def join_session(user_id: str = Depends(get_current_user_id)):
     """
-    Start the heartbeat worker.
-
-    NOTE:
-    For now, session_uid == user_id.
-    Later, this will be replaced with a real session_uid.
+    Start the heartbeat worker AND mark user as ONLINE.
     """
 
     try:
@@ -185,7 +208,8 @@ async def join_session(user_id: str = Depends(get_current_user_id)):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid user id")
 
-    if not users_collection.find_one({"_id": mongo_id}):
+    user = users_collection.find_one({"_id": mongo_id})
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     if HEARTBEAT_WORKER in workers:
@@ -198,14 +222,24 @@ async def join_session(user_id: str = Depends(get_current_user_id)):
     process = Process(
         target=peer_worker,
         args=(
-            HEARTBEAT_WORKER,   # process_uid
-            session_uid,        # session_uid
+            HEARTBEAT_WORKER,
+            session_uid,
             command_queue_name,
             control_queue,
         ),
         daemon=True,
     )
     process.start()
+
+    users_collection.update_one(
+        {"_id": mongo_id},
+        {
+            "$set": {
+                "status": "ONLINE",
+                "last_online_at": datetime.utcnow(),
+            }
+        }
+    )
 
     workers[HEARTBEAT_WORKER] = {
         "process": process,
@@ -216,7 +250,7 @@ async def join_session(user_id: str = Depends(get_current_user_id)):
     }
 
     return {
-        "message": "Heartbeat worker started",
+        "message": "Peer is ONLINE",
         "process_uid": HEARTBEAT_WORKER,
         "session_uid": session_uid,
         "command_queue": command_queue_name,
