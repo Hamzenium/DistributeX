@@ -10,21 +10,37 @@ from app.workers.registry import workers
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
-# -----------------------------------
-# Fixed worker identity
-# -----------------------------------
+# ------------------------------------------------------------------
+# Fixed PROCESS identity (local, technical)
+# {
+ #"type": "ENABLE_HEARTBEAT",
+#"queue": "heartbeat.consumer.node-42"
+#}
+# ------------------------------------------------------------------
 HEARTBEAT_WORKER = "heartbeat-worker"
 
 
-def user_command_queue(user_id: str) -> str:
-    # USER-scoped command queue
-    return f"peer.{user_id}.command"
+def user_command_queue(session_uid: str) -> str:
+    """
+    Session-scoped RabbitMQ command queue.
+
+    Commands sent to this queue control the worker representing
+    this session.
+    """
+    return f"peer.{session_uid}.command"
 
 
 @router.post("/join")
 async def join_session(user_id: str = Depends(get_current_user_id)):
+    """
+    Join a session and start the heartbeat worker.
 
-    # Validate user
+    IMPORTANT:
+    - user_id / session_uid is the LOGICAL identity
+    - HEARTBEAT_WORKER is the PROCESS identity
+    """
+
+    # ---- Validate user ----
     try:
         mongo_id = ObjectId(user_id)
     except Exception:
@@ -33,35 +49,46 @@ async def join_session(user_id: str = Depends(get_current_user_id)):
     if not users_collection.find_one({"_id": mongo_id}):
         raise HTTPException(status_code=404, detail="User not found")
 
+    # ---- Prevent duplicate worker ----
     if HEARTBEAT_WORKER in workers:
         return {"message": "Heartbeat worker already running"}
 
-    # ✅ USER-based command queue
-    command_queue = user_command_queue(user_id)
+    # SESSION UID (logical identity used for heartbeat)
+    session_uid = user_id
 
+    # RabbitMQ command queue scoped to session
+    command_queue_name = user_command_queue(session_uid)
+
+    # Local control queue (FastAPI → worker)
     control_queue = Queue()
-    heartbeat_consumer_queue = Queue()  # placeholder
 
+    # Spawn worker process
     process = Process(
         target=peer_worker,
-        args=(HEARTBEAT_WORKER, command_queue, control_queue),
+        args=(
+            HEARTBEAT_WORKER,       # process_uid
+            session_uid,            # session_uid (heartbeat payload)
+            command_queue_name,
+            control_queue,
+        ),
         daemon=True,
     )
     process.start()
 
+    # Register worker IMMEDIATELY
     workers[HEARTBEAT_WORKER] = {
         "process": process,
         "control_queue": control_queue,
-        "heartbeat_consumer_queue": heartbeat_consumer_queue,
-        "command_queue": command_queue,
-        "user_id": user_id,
+        "command_queue": command_queue_name,
+        "session_uid": session_uid,
         "started_at": datetime.utcnow(),
     }
 
     return {
         "message": "Heartbeat worker started",
-        "worker": HEARTBEAT_WORKER,
-        "command_queue": command_queue,
+        "process_uid": HEARTBEAT_WORKER,
+        "session_uid": session_uid,
+        "command_queue": command_queue_name,
         "pid": process.pid,
     }
 
@@ -72,8 +99,9 @@ async def send_command(
     user_id: str = Depends(get_current_user_id),
 ):
     """
-    Sends a command to the Heartbeat Worker.
+    Send a control command to the heartbeat worker.
     """
+
     worker = workers.get(HEARTBEAT_WORKER)
     if not worker:
         raise HTTPException(status_code=400, detail="Heartbeat worker not running")
@@ -81,7 +109,7 @@ async def send_command(
     worker["control_queue"].put(command)
 
     return {
-        "worker": HEARTBEAT_WORKER,
+        "process_uid": HEARTBEAT_WORKER,
         "command": command,
         "status": "sent",
     }
@@ -90,9 +118,13 @@ async def send_command(
 @router.post("/leave")
 async def leave_session(user_id: str = Depends(get_current_user_id)):
     """
-    Gracefully stops the Heartbeat Worker.
-    Non-blocking.
+    Gracefully stop the heartbeat worker.
+
+    IMPORTANT:
+    - Non-blocking
+    - Registry is updated immediately
     """
+
     worker = workers.get(HEARTBEAT_WORKER)
     if not worker:
         return {"message": "Heartbeat worker not running"}
@@ -100,10 +132,10 @@ async def leave_session(user_id: str = Depends(get_current_user_id)):
     # Signal shutdown
     worker["control_queue"].put("STOP")
 
-    # Remove from registry immediately (do NOT join here)
+    # Remove from registry immediately (DO NOT join)
     del workers[HEARTBEAT_WORKER]
 
     return {
         "message": "Heartbeat worker shutdown initiated",
-        "worker": HEARTBEAT_WORKER,
+        "process_uid": HEARTBEAT_WORKER,
     }
