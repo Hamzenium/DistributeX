@@ -6,7 +6,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Load env vars safely
+# ------------------------------------------------------------------
+# Load env vars
+# ------------------------------------------------------------------
 MONGO_USERNAME = os.getenv("MONGO_USERNAME")
 MONGO_PASSWORD = os.getenv("MONGO_PASSWORD")
 MONGO_CLUSTER = os.getenv("MONGO_CLUSTER")
@@ -23,11 +25,14 @@ mongo_uri = (
     f"{MONGO_DB}?retryWrites=true&w=majority"
 )
 
+# ------------------------------------------------------------------
+# Connect
+# ------------------------------------------------------------------
 try:
     mongo_client = MongoClient(
         mongo_uri,
         tlsCAFile=certifi.where(),
-        serverSelectionTimeoutMS=5000
+        serverSelectionTimeoutMS=5000,
     )
     mongo_client.admin.command("ping")
 except Exception as e:
@@ -35,4 +40,8 @@ except Exception as e:
 
 db = mongo_client[MONGO_DB]
 
+# ------------------------------------------------------------------
+# Collections (EXPLICIT)
+# ------------------------------------------------------------------
 users_collection = db["users"]
+sessions_collection = db["sessions"]
