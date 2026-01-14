@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HypertuneAI - Distributed ML Training</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+  <style>
+:root{
+  --bg-900: #050505;
+  --panel: #0A0A0A;
+  --muted: #9aa0a6;
+  --accent: #f97316;
+  --card-border: rgba(60,60,60,0.6);
+}
+
+*{box-sizing:border-box}
+html,body,#root{height:100%;margin:0;padding:0}
+body{
+  background: var(--bg-900);
+  color: #fff;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+
+.page-root{
+  min-height:100vh;
+  position:relative;
+  overflow-x:hidden;
+  background-image:
+    linear-gradient(#111 1px, transparent 1px),
+    linear-gradient(90deg, #111 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-position: center;
+}
+
+/* Landing Page */
+.landing{
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:40px 20px;
+  text-align:center;
+}
+
+.hero-title{
+  font-size:64px;
+  font-weight:700;
+  margin:0 0 20px;
+  background:linear-gradient(180deg,#fff,#cfcfcf);
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+  letter-spacing:-1px;
+}
+
+.hero-subtitle{
+  font-size:20px;
+  color:var(--muted);
+  margin:0 0 40px;
+  max-width:600px;
+}
+
+.cta-group{
+  display:flex;
+  gap:16px;
+  margin-bottom:60px;
+}
+
+.cta-btn{
+  padding:14px 32px;
+  font-size:16px;
+  font-weight:700;
+  border-radius:12px;
+  border:none;
+  cursor:pointer;
+  transition:all 0.2s;
+}
+
+.cta-primary{
+  background:var(--accent);
+  color:#fff;
+}
+
+.cta-secondary{
+  background:transparent;
+  color:#fff;
+  border:1px solid var(--card-border);
+}
+
+.cta-btn:hover{
+  transform:translateY(-2px);
+  box-shadow:0 10px 30px rgba(249,115,22,0.3);
+}
+
+.features{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(250px, 1fr));
+  gap:20px;
+  max-width:900px;
+  margin-top:40px;
+}
+
+.feature-card{
+  background:var(--panel);
+  border:1px solid var(--card-border);
+  border-radius:12px;
+  padding:24px;
+  text-align:left;
+}
+
+.feature-icon{
+  font-size:32px;
+  margin-bottom:12px;
+}
+
+.feature-title{
+  font-size:18px;
+  font-weight:700;
+  margin:0 0 8px;
+}
+
+.feature-desc{
+  font-size:14px;
+  color:var(--muted);
+  margin:0;
+}
+
+/* Auth Pages */
+.fixed-card{
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 60;
+  width: 100%;
+  max-width: 420px;
+  padding: 20px;
+}
+
+.header{
+  text-align:center;
+  margin-bottom: 12px;
+}
+
+.logo{
+  display:inline-flex;
+  width:56px;
+  height:56px;
+  border-radius:12px;
+  border:1px solid rgba(80,80,80,0.6);
+  background: rgba(20,20,20,0.6);
+  align-items:center;
+  justify-content:center;
+  margin:0 auto 12px;
+  box-shadow: 0 0 15px rgba(249,115,22,0.18);
+}
+
+.logo-inner{ color: var(--accent); font-size:28px; }
+
+.brand{
+  margin:0;
+  font-size:28px;
+  letter-spacing:2px;
+  font-weight:700;
+  background:linear-gradient(180deg,#fff,#cfcfcf);
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+}
+
+.subtitle{
+  margin-top:8px;
+  margin-bottom:0;
+  font-size:12px;
+  color:var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  text-transform:uppercase;
+  letter-spacing:1.6px;
+}
+
+.card{
+  background: var(--panel);
+  border-radius:18px;
+  border:1px solid var(--card-border);
+  overflow:hidden;
+  box-shadow: 0 30px 60px rgba(2,6,23,0.5);
+}
+
+.tabs{
+  display:flex;
+  border-bottom:1px solid rgba(60,60,60,0.6);
+}
+
+.tab{
+  flex:1;
+  padding:14px 18px;
+  font-family: "JetBrains Mono", monospace;
+  font-size:13px;
+  color: #9aa0a6;
+  background:transparent;
+  border:0;
+  cursor:pointer;
+  position:relative;
+}
+
+.tab.active{ color:#fff; }
+
+.tab-underline{
+  position:absolute;
+  left:8px;
+  right:8px;
+  bottom:8px;
+  height:3px;
+  background: linear-gradient(90deg, #ffb07a, #f97316);
+  border-radius:3px;
+  box-shadow: 0 0 10px rgba(249,115,22,0.35);
+}
+
+.card-body{ padding:24px; }
+.form{ display:flex; flex-direction:column; gap:14px; }
+
+.field{ display:flex; flex-direction:column; gap:8px; }
+.label{ font-size:12px; color:var(--muted); font-family: "JetBrains Mono", monospace; text-transform:uppercase; letter-spacing:1px; }
+
+.input{
+  width:100%;
+  padding:12px 14px;
+  border-radius:12px;
+  background: rgba(20,20,20,0.6);
+  border:1px solid rgba(60,60,60,0.6);
+  color:#e6eef8;
+  outline:none;
+  transition: box-shadow .12s, border-color .12s;
+  font-size:14px;
+}
+
+.input:focus{
+  border-color: rgba(249,115,22,0.35);
+  box-shadow: 0 6px 20px rgba(249,115,22,0.06);
+}
+
+.password-row{ position:relative; display:flex; align-items:center; }
+.icon-btn{ background:transparent; border:0; color:#9aa0a6; position:absolute; right:8px; top:8px; padding:6px; cursor:pointer; }
+
+.actions{ padding-top:6px; }
+
+.primary-btn{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  width:100%;
+  background:#fff;
+  color:#000;
+  padding:12px 14px;
+  border-radius:12px;
+  border:0;
+  font-weight:700;
+  cursor:pointer;
+  overflow:hidden;
+}
+
+.primary-btn:disabled{ opacity:0.7; cursor:default; }
+
+.spinner{ 
+  width:18px; 
+  height:18px; 
+  border:2px solid #666; 
+  border-top-color:#111; 
+  border-radius:50%; 
+  animation:spin .9s linear infinite; 
+}
+
+@keyframes spin{ to { transform:rotate(360deg); } }
+
+.btn-overlay{
+  position:absolute;
+  inset:0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent);
+  transform: translateX(-120%);
+  transition: transform .7s;
+  pointer-events:none;
+}
+
+.primary-btn:hover .btn-overlay{ transform: translateX(120%); }
+
+.card-footer{ 
+  padding:18px 20px; 
+  border-top:1px solid rgba(60,60,60,0.6); 
+  background: linear-gradient(180deg, rgba(255,255,255,0.01), transparent); 
+}
+
+.meta{ 
+  display:flex; 
+  gap:8px; 
+  align-items:center; 
+  justify-content:center; 
+  color:var(--muted); 
+  font-family: "JetBrains Mono", monospace; 
+  font-size:12px; 
+}
+
+.error-msg{
+  background:rgba(239,68,68,0.1);
+  border:1px solid rgba(239,68,68,0.3);
+  color:#fca5a5;
+  padding:10px 14px;
+  border-radius:8px;
+  font-size:13px;
+  margin-bottom:12px;
+}
+
+.success-msg{
+  background:rgba(34,197,94,0.1);
+  border:1px solid rgba(34,197,94,0.3);
+  color:#86efac;
+  padding:10px 14px;
+  border-radius:8px;
+  font-size:13px;
+  margin-bottom:12px;
+}
+
+/* Dashboard */
+.dashboard{
+  max-width:1200px;
+  margin:0 auto;
+  padding:40px 20px;
+}
+
+.dash-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:30px;
+  flex-wrap:wrap;
+  gap:20px;
+}
+
+.dash-title{
+  font-size:32px;
+  font-weight:700;
+  margin:0;
+}
+
+.logout-btn{
+  background:transparent;
+  color:var(--accent);
+  border:1px solid rgba(249,115,22,0.3);
+  padding:10px 20px;
+  border-radius:8px;
+  cursor:pointer;
+  font-weight:600;
+}
+
+.status-badge{
+  display:inline-block;
+  padding:4px 12px;
+  border-radius:12px;
+  font-size:11px;
+  font-family:"JetBrains Mono", monospace;
+  text-transform:uppercase;
+  letter-spacing:1px;
+}
+
+.status-online{
+  background:rgba(34,197,94,0.15);
+  color:#86efac;
+  border:1px solid rgba(34,197,94,0.3);
+}
+
+.status-offline{
+  background:rgba(107,114,128,0.15);
+  color:#9ca3af;
+  border:1px solid rgba(107,114,128,0.3);
+}
+
+.status-training{
+  background:rgba(249,115,22,0.15);
+  color:#fb923c;
+  border:1px solid rgba(249,115,22,0.3);
+}
+
+.section{
+  margin-bottom:40px;
+}
+
+.section-title{
+  font-size:20px;
+  font-weight:700;
+  margin:0 0 16px;
+}
+
+.session-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));
+  gap:20px;
+}
+
+.session-card{
+  background:var(--panel);
+  border:1px solid var(--card-border);
+  border-radius:12px;
+  padding:20px;
+}
+
+.session-id{
+  font-family:"JetBrains Mono", monospace;
+  font-size:11px;
+  color:var(--muted);
+  margin-bottom:8px;
+}
+
+.session-info{
+  margin:8px 0;
+  font-size:14px;
+}
+
+.session-info strong{
+  color:var(--accent);
+}
+
+.new-session-form{
+  background:var(--panel);
+  border:1px solid var(--card-border);
+  border-radius:12px;
+  padding:24px;
+  max-width:600px;
+}
+
+.file-input{
+  cursor:pointer;
+}
+
+.textarea{
+  min-height:120px;
+  resize:vertical;
+  font-family:"JetBrains Mono", monospace;
+  font-size:13px;
+}
+
+.hidden{ display:none; }
+
+@media (max-width:768px){
+  .hero-title{ font-size:42px; }
+  .cta-group{ flex-direction:column; width:100%; }
+  .cta-btn{ width:100%; }
+}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    const API_BASE = 'http://localhost:8000'; // Update with your backend URL
+    
+    // State management
+    const state = {
+      view: 'landing', // landing, auth, dashboard
+      authTab: 'signin',
+      user: null,
+      token: null,
+      sessions: [],
+      loading: false,
+      error: null,
+      success: null,
+      userStatus: 'OFFLINE'
+    };
+
+    // Check for existing token on load
+    const savedToken = localStorage.getItem('token');
+    const savedUser = localStorage.getItem('user');
+    if (savedToken && savedUser) {
+      state.token = savedToken;
+      state.user = JSON.parse(savedUser);
+      state.view = 'dashboard';
+      loadDashboard();
+    }
+
+    // API calls
+    async function apiCall(endpoint, method = 'GET', body = null, isFormData = false) {
+      const headers = {};
+      
+      if (state.token) {
+        headers['Authorization'] = `Bearer ${state.token}`;
+      }
+      
+      if (!isFormData && body) {
+        headers['Content-Type'] = 'application/json';
+      }
+
+      const options = {
+        method,
+        headers
+      };
+
+      if (body) {
+        options.body = isFormData ? body : JSON.stringify(body);
+      }
+
+      const response = await fetch(`${API_BASE}${endpoint}`, options);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Request failed');
+      }
+
+      return response.json();
+    }
+
+    // Auth functions
+    async function signup(username, email, password) {
+      state.loading = true;
+      state.error = null;
+      render();
+
+      try {
+        await apiCall('/auth/signup', 'POST', { username, email, password });
+        state.success = 'Account created! Please sign in.';
+        state.authTab = 'signin';
+      } catch (err) {
+        state.error = err.message;
+      } finally {
+        state.loading = false;
+        render();
+      }
+    }
+
+    async function signin(email, password) {
+      state.loading = true;
+      state.error = null;
+      render();
+
+      try {
+        const data = await apiCall('/auth/signin', 'POST', { email, password });
+        state.token = data.access_token;
+        state.user = { email, username: data.username };
+        localStorage.setItem('token', state.token);
+        localStorage.setItem('user', JSON.stringify(state.user));
+        state.view = 'dashboard';
+        await loadDashboard();
+      } catch (err) {
+        state.error = err.message;
+      } finally {
+        state.loading = false;
+        render();
+      }
+    }
+
+    async function joinSession() {
+      try {
+        const data = await apiCall('/sessions/join', 'POST');
+        state.userStatus = 'ONLINE';
+        state.success = 'You are now online and ready to receive tasks!';
+        render();
+      } catch (err) {
+        state.error = err.message;
+        render();
+      }
+    }
+
+    async function leaveSession() {
+      try {
+        await apiCall('/sessions/leave', 'POST');
+        state.userStatus = 'OFFLINE';
+        state.success = 'You are now offline.';
+        render();
+      } catch (err) {
+        state.error = err.message;
+        render();
+      }
+    }
+
+    async function startSession(formData) {
+      state.loading = true;
+      state.error = null;
+      render();
+
+      try {
+        const data = await apiCall('/sessions/start', 'POST', formData, true);
+        state.success = `Session ${data.session_uid} started successfully!`;
+        await loadDashboard();
+      } catch (err) {
+        state.error = err.message;
+      } finally {
+        state.loading = false;
+        render();
+      }
+    }
+
+    async function loadDashboard() {
+      // In a real app, you'd fetch user sessions here
+      // For now, we'll just render the dashboard
+      render();
+    }
+
+    function logout() {
+      state.token = null;
+      state.user = null;
+      state.view = 'landing';
+      state.userStatus = 'OFFLINE';
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      render();
+    }
+
+    // Render functions
+    function renderLanding() {
+      return `
+        <div class="page-root">
+          <div class="landing">
+            <h1 class="hero-title">HypertuneAI</h1>
+            <p class="hero-subtitle">
+              Distributed machine learning training platform. Harness the power of collaborative hyperparameter optimization.
+            </p>
+            <div class="cta-group">
+              <button class="cta-btn cta-primary" onclick="navigateTo('auth')">Get Started</button>
+              <button class="cta-btn cta-secondary" onclick="navigateTo('auth')">Sign In</button>
+            </div>
+            <div class="features">
+              <div class="feature-card">
+                <div class="feature-icon">⚡</div>
+                <h3 class="feature-title">Lightning Fast</h3>
+                <p class="feature-desc">Distribute training across multiple peers for faster convergence</p>
+              </div>
+              <div class="feature-card">
+                <div class="feature-icon">🔒</div>
+                <h3 class="feature-title">Secure & Private</h3>
+                <p class="feature-desc">Your data stays encrypted with enterprise-grade security</p>
+              </div>
+              <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <h3 class="feature-title">Real-time Analytics</h3>
+                <p class="feature-desc">Monitor training progress and results in real-time</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderAuth() {
+      const isSignin = state.authTab === 'signin';
+      
+      return `
+        <div class="page-root">
+          <div class="fixed-card">
+            <div class="header">
+              <div class="logo">
+                <div class="logo-inner">⚡</div>
+              </div>
+              <h1 class="brand">HYPERTUNE</h1>
+              <p class="subtitle">Distributed ML Training</p>
+            </div>
+            
+            <div class="card">
+              <div class="tabs">
+                <button class="tab ${isSignin ? 'active' : ''}" onclick="switchTab('signin')">
+                  Sign In
+                  ${isSignin ? '<div class="tab-underline"></div>' : ''}
+                </button>
+                <button class="tab ${!isSignin ? 'active' : ''}" onclick="switchTab('signup')">
+                  Sign Up
+                  ${!isSignin ? '<div class="tab-underline"></div>' : ''}
+                </button>
+              </div>
+              
+              <div class="card-body">
+                ${state.error ? `<div class="error-msg">${state.error}</div>` : ''}
+                ${state.success ? `<div class="success-msg">${state.success}</div>` : ''}
+                
+                <form class="form" onsubmit="handleAuthSubmit(event)">
+                  ${!isSignin ? `
+                    <div class="field">
+                      <label class="label">Username</label>
+                      <input type="text" name="username" class="input" required>
+                    </div>
+                  ` : ''}
+                  
+                  <div class="field">
+                    <label class="label">Email</label>
+                    <input type="email" name="email" class="input" required>
+                  </div>
+                  
+                  <div class="field">
+                    <label class="label">Password</label>
+                    <div class="password-row">
+                      <input type="password" name="password" class="input" required>
+                    </div>
+                  </div>
+                  
+                  <div class="actions">
+                    <button type="submit" class="primary-btn" ${state.loading ? 'disabled' : ''}>
+                      ${state.loading ? '<div class="spinner"></div>' : (isSignin ? 'Sign In →' : 'Create Account →')}
+                      <div class="btn-overlay"></div>
+                    </button>
+                  </div>
+                </form>
+              </div>
+              
+              <div class="card-footer">
+                <div class="meta">
+                  <span>${isSignin ? "Don't have an account?" : "Already have an account?"}</span>
+                  <button class="meta-text" onclick="switchTab('${isSignin ? 'signup' : 'signin'}')" style="background:none;border:none;color:var(--accent);cursor:pointer;">
+                    ${isSignin ? 'Sign Up' : 'Sign In'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderDashboard() {
+      return `
+        <div class="page-root">
+          <div class="dashboard">
+            <div class="dash-header">
+              <div>
+                <h1 class="dash-title">Welcome, ${state.user?.username || 'User'}</h1>
+                <span class="status-badge status-${state.userStatus.toLowerCase()}">${state.userStatus}</span>
+              </div>
+              <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
+
+            ${state.error ? `<div class="error-msg">${state.error}</div>` : ''}
+            ${state.success ? `<div class="success-msg">${state.success}</div>` : ''}
+
+            <div class="section">
+              <h2 class="section-title">Worker Status</h2>
+              <div class="card" style="padding:20px;max-width:400px;">
+                ${state.userStatus === 'OFFLINE' ? `
+                  <p style="margin:0 0 16px;color:var(--muted);">Start accepting training tasks from other users</p>
+                  <button class="primary-btn" onclick="joinSession()">
+                    Go Online
+                    <div class="btn-overlay"></div>
+                  </button>
+                ` : `
+                  <p style="margin:0 0 16px;color:#86efac;">✓ You're online and ready to receive tasks</p>
+                  <button class="primary-btn" style="background:#ef4444;" onclick="leaveSession()">
+                    Go Offline
+                  </button>
+                `}
+              </div>
+            </div>
+
+            <div class="section">
+              <h2 class="section-title">Start New Training Session</h2>
+              <form class="new-session-form" onsubmit="handleSessionSubmit(event)">
+                <div class="field">
+                  <label class="label">Dataset (CSV)</label>
+                  <input type="file" name="file" class="input file-input" accept=".csv" required>
+                </div>
+                
+                <div class="field">
+                  <label class="label">Number of Peers</label>
+                  <input type="number" name="num_peers" class="input" min="1" max="10" value="2" required>
+                </div>
+                
+                <div class="field">
+                  <label class="label">Hyperparameters (JSON Array)</label>
+                  <textarea name="hyperparameters" class="input textarea" required>[
+  {"learning_rate": 0.01, "batch_size": 32},
+  {"learning_rate": 0.001, "batch_size": 64}
+]</textarea>
+                </div>
+                
+                <button type="submit" class="primary-btn" ${state.loading ? 'disabled' : ''}>
+                  ${state.loading ? '<div class="spinner"></div>' : 'Start Training Session →'}
+                  <div class="btn-overlay"></div>
+                </button>
+              </form>
+            </div>
+
+            <div class="section">
+              <h2 class="section-title">Your Sessions</h2>
+              <div class="session-grid">
+                ${state.sessions.length === 0 ? `
+                  <p style="color:var(--muted);">No sessions yet. Start a new training session above.</p>
+                ` : state.sessions.map(s => `
+                  <div class="session-card">
+                    <div class="session-id">ID: ${s.id}</div>
+                    <div class="session-info"><strong>Status:</strong> ${s.status}</div>
+                    <div class="session-info"><strong>Peers:</strong> ${s.num_peers}</div>
+                    <div class="session-info"><strong>Created:</strong> ${new Date(s.created_at).toLocaleString()}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function render() {
+      const root = document.getElementById('root');
+      
+      if (state.view === 'landing') {
+        root.innerHTML = renderLanding();
+      } else if (state.view === 'auth') {
+        root.innerHTML = renderAuth();
+      } else if (state.view === 'dashboard') {
+        root.innerHTML = renderDashboard();
+      }
+    }
+
+    // Event handlers
+    function navigateTo(view) {
+      state.view = view;
+      state.error = null;
+      state.success = null;
+      render();
+    }
+
+    function switchTab(tab) {
+      state.authTab = tab;
+      state.error = null;
+      state.success = null;
+      render();
+    }
+
+    function handleAuthSubmit(e) {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      
+      if (state.authTab === 'signin') {
+        signin(formData.get('email'), formData.get('password'));
+      } else {
+        signup(formData.get('username'), formData.get('email'), formData.get('password'));
+      }
+    }
+
+    function handleSessionSubmit(e) {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      startSession(formData);
+    }
+
+    // Initial render
+    render();
+  </script>
+</body>
+</html>
