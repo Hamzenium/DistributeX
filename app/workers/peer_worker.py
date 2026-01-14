@@ -1,15 +1,11 @@
 """
 Peer Worker Runtime (Agent Process) with DNN
 
-This module represents a single "peer" in a distributed system.
 Responsibilities:
-- Listen for commands (TRAIN, ENABLE, STOP) from either a local multiprocessing.Queue or RabbitMQ.
-- Download datasets from S3, train a small fully-connected DNN model.
-- Send periodic heartbeats:
-    - During training: includes epoch, loss, accuracy.
-    - Idle: reports status.
-    - After training: sends a final "DONE" message.
-- Clean up temporary dataset files after use.
+- Listen for commands (TRAIN, ENABLE, STOP) from local queue or RabbitMQ.
+- Download datasets from S3, train a small fully-connected DNN.
+- Send heartbeats during training, idle, and after completion.
+- Clean up temporary files.
 """
 
 import asyncio
@@ -19,7 +15,7 @@ import json
 from multiprocessing import Queue
 from queue import Empty
 
-import aio_pika  # Asynchronous RabbitMQ client
+import aio_pika
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -27,91 +23,55 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from app.storage.s3 import s3  # boto3 S3 client
 
-
-# ============================================================================
+# ----------------------------
 # Timing constants
-# ============================================================================
-HEARTBEAT_INTERVAL = 5.0  # seconds between idle heartbeats
-LOOP_SLEEP = 0.1          # sleep in main loop to avoid busy-waiting
+# ----------------------------
+HEARTBEAT_INTERVAL = 5.0
+LOOP_SLEEP = 0.1
 
-
-# ============================================================================
-# RabbitMQ helper functions
-# ============================================================================
+# ----------------------------
+# RabbitMQ helpers
+# ----------------------------
 async def connect_rabbitmq(process_uid: str, command_queue_name: str):
-    """
-    Connect to RabbitMQ over SSL and declare the command queue.
-
-    Args:
-        process_uid: Unique identifier of this peer (for logging).
-        command_queue_name: Name of the command queue to listen on.
-
-    Returns:
-        connection, channel, command_queue objects.
-        If RabbitMQ is disabled, returns (None, None, None)
-    """
     rabbit_url = os.getenv("RABBITMQ_URL")
     if not rabbit_url:
         print(f"[{process_uid}] RabbitMQ disabled")
         return None, None, None
 
-    # Create SSL context for secure RabbitMQ connection
     ssl_ctx = ssl.create_default_context()
     ssl_ctx.load_verify_locations("isrgrootx1.pem")
 
-    # Establish connection and channel
     connection = await aio_pika.connect_robust(rabbit_url, ssl_context=ssl_ctx)
     channel = await connection.channel()
-    await channel.set_qos(prefetch_count=1)  # limit unacknowledged messages
+    await channel.set_qos(prefetch_count=1)
 
-    # Declare durable queue to receive commands
     command_queue = await channel.declare_queue(command_queue_name, durable=True)
     print(f"[{process_uid}] RabbitMQ connected")
     return connection, channel, command_queue
 
 
 async def publish_message(channel, queue_name: str, body: bytes):
-    """
-    Publish a message to a RabbitMQ queue.
-
-    Args:
-        channel: RabbitMQ channel
-        queue_name: Target queue
-        body: Message bytes (JSON encoded)
-    """
     await channel.default_exchange.publish(
-        aio_pika.Message(body=body, delivery_mode=aio_pika.DeliveryMode.NOT_PERSISTENT),
+        aio_pika.Message(
+            body=body, delivery_mode=aio_pika.DeliveryMode.NOT_PERSISTENT
+        ),
         routing_key=queue_name,
     )
 
 
 async def start_rabbit_consumer(process_uid: str, amqp_queue: aio_pika.Queue, local_async_queue: asyncio.Queue):
-    """
-    Consume messages from RabbitMQ and put them into a local asyncio.Queue.
-    This ensures uniform processing whether messages come from RabbitMQ or local queue.
-
-    Args:
-        process_uid: For logging
-        amqp_queue: RabbitMQ queue
-        local_async_queue: Async queue for worker loop
-    """
     async def on_message(message: aio_pika.IncomingMessage):
-        async with message.process():  # auto-acknowledge
+        async with message.process():
             local_async_queue.put_nowait(message.body.decode())
 
     await amqp_queue.consume(on_message)
     print(f"[{process_uid}] RabbitMQ consumer started")
 
 
-# ============================================================================
+# ----------------------------
 # Heartbeat helpers
-# ============================================================================
+# ----------------------------
 async def attach_heartbeat_queue(channel, queue_name: str):
-    """
-    Attach a queue for sending heartbeat messages.
-
-    Returns the queue object, or None if not possible.
-    """
     if not channel or not queue_name:
         return None
     queue = await channel.get_queue(queue_name, ensure=False)
@@ -121,11 +81,6 @@ async def attach_heartbeat_queue(channel, queue_name: str):
 
 async def send_heartbeat(session_uid: str, channel, heartbeat_state: dict, training_state: dict,
                          epoch=None, loss=None, accuracy=None):
-    """
-    Send heartbeat message:
-    - During training: include epoch, loss, accuracy
-    - Idle: include peer_uid and status
-    """
     if not heartbeat_state.get("enabled") or not channel or not heartbeat_state.get("queue"):
         return
 
@@ -150,9 +105,6 @@ async def send_heartbeat(session_uid: str, channel, heartbeat_state: dict, train
 
 
 async def maybe_send_heartbeat(session_uid: str, channel, heartbeat_state: dict, training_state: dict):
-    """
-    Send idle heartbeat respecting HEARTBEAT_INTERVAL to avoid spamming messages.
-    """
     if training_state.get("active"):
         return
     now = asyncio.get_event_loop().time()
@@ -161,16 +113,10 @@ async def maybe_send_heartbeat(session_uid: str, channel, heartbeat_state: dict,
     await send_heartbeat(session_uid, channel, heartbeat_state, training_state)
 
 
-# ============================================================================
+# ----------------------------
 # Dataset download
-# ============================================================================
+# ----------------------------
 def download_dataset_from_s3(s3_url: str):
-    """
-    Download a CSV dataset from S3 to a local temp file.
-    
-    Returns:
-        Local file path
-    """
     if not s3_url.startswith("s3://"):
         raise ValueError("Invalid S3 URL")
 
@@ -183,15 +129,11 @@ def download_dataset_from_s3(s3_url: str):
     return local_file
 
 
-# ============================================================================
-# Simple fully connected DNN
-# ============================================================================
+# ----------------------------
+# Simple DNN
+# ----------------------------
 class SimpleDNN(nn.Module):
     def __init__(self, input_dim, output_dim=10):
-        """
-        Fully connected DNN:
-        input_dim -> 128 -> 64 -> output_dim
-        """
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(input_dim, 128),
@@ -205,24 +147,17 @@ class SimpleDNN(nn.Module):
         return self.net(x)
 
 
-# ============================================================================
-# DNN training
-# ============================================================================
-async def train_dnn(session_uid, channel, heartbeat_state, dataset_path, x_labels, y_label,
+# ----------------------------
+# Training
+# ----------------------------
+async def train_dnn(session_uid, channel, heartbeat_state, dataset_path,
                     batch_size=64, epochs=10, learning_rate=0.001):
-    """
-    Train a SimpleDNN on a CSV dataset.
-
-    Steps:
-    1. Load CSV into PyTorch tensors
-    2. Initialize model, loss, optimizer
-    3. Train for 'epochs' epochs
-    4. Send heartbeat after each epoch
-    5. Send final "DONE" heartbeat
-    6. Delete dataset file
-    """
     import pandas as pd
     df = pd.read_csv(dataset_path)
+
+    # Fix x_label / y_label logic
+    y_label = "label"
+    x_labels = [col for col in df.columns if col != y_label]
 
     X = df[x_labels].values.astype("float32")
     y = df[y_label].values.astype("int64")
@@ -238,9 +173,6 @@ async def train_dnn(session_uid, channel, heartbeat_state, dataset_path, x_label
 
     training_state = {"active": True, "loss": None, "accuracy": None, "status": "training"}
 
-    # ----------------------------
-    # Training loop
-    # ----------------------------
     for epoch in range(epochs):
         epoch_loss, correct, total = 0.0, 0, 0
         for xb, yb in loader:
@@ -260,25 +192,21 @@ async def train_dnn(session_uid, channel, heartbeat_state, dataset_path, x_label
         training_state["loss"] = avg_loss
         training_state["accuracy"] = accuracy
 
-        # Send heartbeat per epoch
+        # Send heartbeat
         await send_heartbeat(session_uid, channel, heartbeat_state, training_state,
                              epoch=epoch+1, loss=avg_loss, accuracy=accuracy)
         print(f"[training] Epoch {epoch+1}/{epochs} → loss: {avg_loss:.4f}, accuracy: {accuracy:.4f}")
 
-    # ----------------------------
     # Training complete
-    # ----------------------------
     training_state["active"] = False
     training_state["status"] = "idle"
-    print("[training] complete")
 
-    # Send final DONE heartbeat
     done_payload = {"peer_uid": session_uid, "type": "DONE", "status": "completed"}
     if heartbeat_state.get("enabled") and heartbeat_state.get("queue") and channel:
         await publish_message(channel, heartbeat_state["queue"].name, json.dumps(done_payload).encode())
         print(f"[heartbeat] sent final DONE → {done_payload}")
 
-    # Clean up local dataset
+    # Cleanup
     try:
         os.remove(dataset_path)
         print(f"[dataset] deleted {dataset_path}")
@@ -288,16 +216,10 @@ async def train_dnn(session_uid, channel, heartbeat_state, dataset_path, x_label
     return model
 
 
-# ============================================================================
+# ----------------------------
 # Command handling
-# ============================================================================
+# ----------------------------
 async def handle_command(process_uid, session_uid, source, payload, channel, heartbeat_state):
-    """
-    Process a single command from local or RabbitMQ queue:
-    - STOP: terminate worker
-    - ENABLE: enable heartbeat queue
-    - TRAIN: download dataset, train model
-    """
     print(f"[{process_uid}] handling {payload} from {source}")
 
     if payload == "STOP":
@@ -325,30 +247,22 @@ async def handle_command(process_uid, session_uid, source, payload, channel, hea
 
         elif cmd_type == "TRAIN":
             csv_link = data.get("csv_link")
-            x_labels = data.get("x_labels")
-            y_label = data.get("y_label")
             batch_size = data.get("batch_size", 64)
             epochs = data.get("epochs", 10)
             learning_rate = data.get("learning_rate", 0.001)
 
             dataset_path = download_dataset_from_s3(csv_link)
             await train_dnn(session_uid, channel, heartbeat_state, dataset_path,
-                            x_labels, y_label, batch_size, epochs, learning_rate)
+                            batch_size=batch_size, epochs=epochs, learning_rate=learning_rate)
             return True
 
     return True
 
 
-# ============================================================================
-# Main async worker loop
-# ============================================================================
+# ----------------------------
+# Main worker loop
+# ----------------------------
 async def _run_worker(process_uid, session_uid, command_queue_name, control_queue: Queue):
-    """
-    Main loop:
-    - Listens for messages from RabbitMQ and local queue
-    - Handles commands
-    - Sends idle heartbeats when not training
-    """
     running = True
     connection, channel, command_queue = await connect_rabbitmq(process_uid, command_queue_name)
     rabbit_cmd_queue = asyncio.Queue()
@@ -360,21 +274,18 @@ async def _run_worker(process_uid, session_uid, command_queue_name, control_queu
     print(f"[{process_uid}] worker started")
 
     while running:
-        # Handle messages from local queue
         try:
             msg = control_queue.get_nowait()
             running = await handle_command(process_uid, session_uid, "local", msg, channel, heartbeat_state)
         except Empty:
             pass
 
-        # Handle messages from RabbitMQ queue
         try:
             payload = rabbit_cmd_queue.get_nowait()
             running = await handle_command(process_uid, session_uid, "rabbitmq", payload, channel, heartbeat_state)
         except asyncio.QueueEmpty:
             pass
 
-        # Send idle heartbeat if not training
         await maybe_send_heartbeat(session_uid, channel, heartbeat_state, {"active": False, "status": "idle"})
         await asyncio.sleep(LOOP_SLEEP)
 
@@ -383,14 +294,10 @@ async def _run_worker(process_uid, session_uid, command_queue_name, control_queu
     print(f"[{process_uid}] worker exited cleanly")
 
 
-# ============================================================================
-# Entry point for multiprocessing.Process
-# ============================================================================
+# ----------------------------
+# Entry point for multiprocessing
+# ----------------------------
 def peer_worker(process_uid, session_uid, command_queue_name, control_queue: Queue):
-    """
-    Entry point for a peer process.
-    Runs the async worker loop and ensures queues are cleaned up on exit.
-    """
     try:
         asyncio.run(_run_worker(process_uid, session_uid, command_queue_name, control_queue))
     finally:
