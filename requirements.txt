@@ -16,3 +16,6 @@ aio_pika
 minio
 boto3
 python-multipart
+torch
+pandas
+requests

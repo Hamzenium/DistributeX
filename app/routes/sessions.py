@@ -118,7 +118,8 @@ async def start_session(
     if not S3_BUCKET:
         raise HTTPException(status_code=500, detail="S3_BUCKET_NAME not configured")
 
-    s3_key = f"sessions/{session_id}/dataset.csv"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    s3_key = f"{timestamp}.dataset.csv"
 
     try:
         s3.upload_fileobj(
