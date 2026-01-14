@@ -175,19 +175,26 @@ flowchart TD
 
 ## Installation
 
-1. **Clone the repository**
+### Option 1: Local Installation
+
+1. **Install Dependencies**
 ```bash
-git clone https://github.com/yourusername/p2p-ml-training.git
-cd p2p-ml-training
+make build
 ```
 
-2. **Create virtual environment**
+2. **Start Server**
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+make run
 ```
 
-3. **Install dependencies**
+### Option 2: Docker Compose
+
+1. **Start with Docker Compose**
 ```bash
-pip install -r requirements.txt
+docker-compose up -d
+```
+
+2. **Stop services**
+```bash
+docker-compose down
 ```
