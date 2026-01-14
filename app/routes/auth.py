@@ -24,7 +24,7 @@ def signup(data: SignupRequest):
     user = {
         "username": data.username,
         "email": data.email,
-        "phone_number": data.phone_number,
+        "phone_number": data.phone_number,  # <-- new field
         "password": hash_password(data.password),
         "specs": specs,
         "status": "OFFLINE",
