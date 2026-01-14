@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
 from datetime import datetime
 from bson import ObjectId
-from multiprocessing import Process
+from multiprocessing import Process, Queue
 import json
 import os
 import tempfile
@@ -10,14 +10,27 @@ from app.database import users_collection, sessions_collection
 from app.utils.security import get_current_user_id
 from app.storage.s3 import s3
 from app.coordinator.coordinator import run_coordinator
+from app.workers.peer_worker import peer_worker
+from app.workers.registry import workers
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 S3_BUCKET = os.getenv("S3_BUCKET_NAME")
 
+# Name of the heartbeat worker process
+HEARTBEAT_WORKER = "heartbeat-worker"
+
 # ------------------------------------------------------------------
-# Background process:
-# Upload CSV → update session → start coordinator
+# Helper: generate command queue name
+# ------------------------------------------------------------------
+def user_command_queue(session_uid: str) -> str:
+    """
+    Generates a command queue name for a given session/user.
+    """
+    return f"peer.{session_uid}.command"
+
+# ------------------------------------------------------------------
+# Background process: upload CSV → update session → start coordinator
 # ------------------------------------------------------------------
 def upload_and_start_coordinator(
     temp_file_path: str,
@@ -67,7 +80,6 @@ def upload_and_start_coordinator(
     except Exception:
         pass
 
-
 # ------------------------------------------------------------------
 # Start session endpoint
 # ------------------------------------------------------------------
@@ -82,9 +94,7 @@ async def start_session(
     Creates a session and starts training asynchronously.
     """
 
-    # -----------------------------
     # Validate owner
-    # -----------------------------
     try:
         owner_oid = ObjectId(user_id)
     except Exception:
@@ -94,9 +104,7 @@ async def start_session(
     if not owner:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # -----------------------------
     # Parse hyperparameters
-    # -----------------------------
     try:
         hyperparams_list = json.loads(hyperparameters)
     except json.JSONDecodeError:
@@ -108,9 +116,7 @@ async def start_session(
             detail="Hyperparameters list must match num_peers",
         )
 
-    # -----------------------------
     # Find available peers
-    # -----------------------------
     available_users = list(
         users_collection.find(
             {"status": "ONLINE", "_id": {"$ne": owner_oid}}
@@ -123,9 +129,7 @@ async def start_session(
             detail="Not enough online peers available",
         )
 
-    # -----------------------------
     # Create session
-    # -----------------------------
     session_id = ObjectId()
     peers = {}
     results = {}
@@ -172,23 +176,19 @@ async def start_session(
         {"$addToSet": {"owned_sessions": session_id}},
     )
 
-    # -----------------------------
     # Save uploaded file locally
-    # -----------------------------
     with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
         temp_file_path = tmp.name
         tmp.write(await file.read())
 
-    # -----------------------------
     # Spawn background process
-    # -----------------------------
     Process(
         target=upload_and_start_coordinator,
         args=(
             temp_file_path,
             file.filename,
             str(session_id),
-            str(owner_oid),  # ✅ coordinator UID
+            str(owner_oid),
         ),
         daemon=True,
     ).start()
@@ -199,20 +199,72 @@ async def start_session(
         "assigned_peers": list(peers.values()),
     }
 
+# ------------------------------------------------------------------
+# Join session endpoint
+# ------------------------------------------------------------------
+@router.post("/join")
+async def join_session(user_id: str = Depends(get_current_user_id)):
+    """
+    Start the heartbeat worker AND mark user as ONLINE.
+    """
 
+    try:
+        mongo_id = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user id")
 
-# -------------------------------
-# Other endpoints remain mostly unchanged
-# -------------------------------
+    user = users_collection.find_one({"_id": mongo_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-# Join session, send command, leave session, training-status
-# (reuse your previous code)
+    if HEARTBEAT_WORKER in workers:
+        return {"message": "Heartbeat worker already running"}
 
+    session_uid = user_id
+    command_queue_name = user_command_queue(session_uid)
+    control_queue = Queue()
 
-# ============================================================================
+    process = Process(
+        target=peer_worker,
+        args=(
+            HEARTBEAT_WORKER,
+            session_uid,
+            command_queue_name,
+            control_queue,
+        ),
+        daemon=True,
+    )
+    process.start()
+
+    users_collection.update_one(
+        {"_id": mongo_id},
+        {
+            "$set": {
+                "status": "ONLINE",
+                "last_online_at": datetime.utcnow(),
+            }
+        }
+    )
+
+    workers[HEARTBEAT_WORKER] = {
+        "process": process,
+        "control_queue": control_queue,
+        "command_queue": command_queue_name,
+        "session_uid": session_uid,
+        "started_at": datetime.utcnow(),
+    }
+
+    return {
+        "message": "Peer is ONLINE",
+        "process_uid": HEARTBEAT_WORKER,
+        "session_uid": session_uid,
+        "command_queue": command_queue_name,
+        "pid": process.pid,
+    }
+
+# ------------------------------------------------------------------
 # Send command to worker
-# ============================================================================
-
+# ------------------------------------------------------------------
 @router.post("/command")
 async def send_command(
     command: str,
@@ -237,11 +289,9 @@ async def send_command(
         "status": "sent",
     }
 
-
-# ============================================================================
-# Leave Session (stop worker)
-# ============================================================================
-
+# ------------------------------------------------------------------
+# Leave session (stop worker)
+# ------------------------------------------------------------------
 @router.post("/leave")
 async def leave_session(user_id: str = Depends(get_current_user_id)):
     """
@@ -260,10 +310,9 @@ async def leave_session(user_id: str = Depends(get_current_user_id)):
         "process_uid": HEARTBEAT_WORKER,
     }
 
-# ============================================================================
-# Check Training Status (User-scoped)
-# ============================================================================
-
+# ------------------------------------------------------------------
+# Check training status (user-scoped)
+# ------------------------------------------------------------------
 @router.get("/training-status")
 async def get_training_status(user_id: str = Depends(get_current_user_id)):
     """
@@ -285,13 +334,11 @@ async def get_training_status(user_id: str = Depends(get_current_user_id)):
     if not joined_sessions:
         return {"message": "Waiting to Join Session"}
 
-    # Get the latest joined session
     latest_session_id = joined_sessions[-1]
     session = sessions_collection.find_one({"_id": latest_session_id})
     if not session:
         return {"message": "Session not found"}
 
-    # Check session status
     status = session.get("status", "UNKNOWN")
     if status == "RUNNING":
         return {"status": "training is going on"}
