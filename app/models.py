@@ -10,7 +10,7 @@ class SignupRequest(BaseModel):
     username: str
     email: EmailStr
     password: str
-    specs: Optional[Dict[str, Any]] = None
+    phone_number: str  # <-- add this
 
 
 class SigninRequest(BaseModel):
