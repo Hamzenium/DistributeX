@@ -2,7 +2,7 @@
 
 A peer-to-peer distributed machine learning training system that enables collaborative model training across multiple nodes using message queues, cloud storage, and coordinated worker processes.
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Overview](#overview)
 - [System Architecture](#system-architecture)
@@ -11,7 +11,7 @@ A peer-to-peer distributed machine learning training system that enables collabo
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 
-## 🎯 Overview
+## Overview
 
 This platform allows users to:
 - Create distributed training sessions with multiple peer workers
@@ -20,7 +20,7 @@ This platform allows users to:
 - Collect and aggregate results from multiple workers
 - Manage training sessions through a REST API
 
-## 🏗️ System Architecture
+## System Architecture
 
 ```mermaid
 flowchart TD
@@ -129,7 +129,7 @@ flowchart TD
     style Error2 fill:#ffcdd2,stroke:#d32f2f,stroke-width:2px
 ```
 
-## ✨ Features
+## Features
 
 ### Core Features
 - **Distributed Training**: Train ML models across multiple peer workers simultaneously
@@ -146,7 +146,7 @@ flowchart TD
 - **GPU Support**: Automatic GPU detection and utilization
 - **Heartbeat System**: Real-time training status updates
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 ### Backend
 - **FastAPI** - Modern web framework for building APIs
@@ -165,7 +165,7 @@ flowchart TD
 - **bcrypt** - Password hashing
 - **TLS/SSL** - Encrypted message queue connections
 
-## 📦 Prerequisites
+## Prerequisites
 
 - Python 3.8 or higher
 - MongoDB Atlas account
@@ -173,7 +173,7 @@ flowchart TD
 - AWS account with S3 bucket
 - pip package manager
 
-## 🚀 Installation
+## Installation
 
 1. **Clone the repository**
 ```bash
