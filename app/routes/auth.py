@@ -15,6 +15,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/signup")
 def signup(data: SignupRequest):
+    # Check if email already exists
     if users_collection.find_one({"email": data.email}):
         raise HTTPException(status_code=400, detail="User already exists")
 
@@ -23,6 +24,7 @@ def signup(data: SignupRequest):
     user = {
         "username": data.username,
         "email": data.email,
+        "phone_number": data.phone_number,
         "password": hash_password(data.password),
         "specs": specs,
         "status": "OFFLINE",
@@ -37,6 +39,7 @@ def signup(data: SignupRequest):
     return {
         "message": "Signup successful"
     }
+
 
 
 @router.post("/signin")
