@@ -138,8 +138,9 @@ async def start_session(
     # Build peers + lock users
     # --------------------------------------------------
     peers = []
+    initial_peer_results = {}  # top-level results dict
 
-    for user in available_users:
+    for i, user in enumerate(available_users):
         peer_uid = str(user["_id"])
         queue_name = f"peer.{peer_uid}.command"
 
@@ -147,9 +148,14 @@ async def start_session(
             {
                 "uid": peer_uid,
                 "peer_queue": queue_name,
-                "results": None,
+                "results": [],  # list of epochs for this peer
+                "status": "TRAINING",  # initial status
+                "hyperparameters": hyperparams_list[i],  # attach hyperparams per peer
             }
         )
+
+        # Initialize top-level results
+        initial_peer_results[peer_uid] = []
 
         # Lock peer immediately
         users_collection.update_one(
@@ -178,6 +184,7 @@ async def start_session(
         "started_at": datetime.utcnow(),
         "completed_at": None,
         "peers": peers,
+        "results": initial_peer_results,
     }
 
     sessions_collection.insert_one(session_doc)
@@ -318,3 +325,41 @@ async def leave_session(user_id: str = Depends(get_current_user_id)):
         "message": "Heartbeat worker shutdown initiated",
         "process_uid": HEARTBEAT_WORKER,
     }
+
+# ============================================================================
+# Check Training Status (User-scoped)
+# ============================================================================
+
+@router.get("/training-status")
+async def get_training_status(user_id: str = Depends(get_current_user_id)):
+    """
+    Returns whether the latest session the user joined is still running.
+
+    - If session is RUNNING → "training is going on"
+    - Otherwise → "training is completed"
+    """
+    try:
+        user_oid = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user id")
+
+    user = users_collection.find_one({"_id": user_oid})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    joined_sessions = user.get("joined_sessions", [])
+    if not joined_sessions:
+        return {"message": "Waiting to Join Session"}
+
+    # Get the latest joined session
+    latest_session_id = joined_sessions[-1]
+    session = sessions_collection.find_one({"_id": latest_session_id})
+    if not session:
+        return {"message": "Session not found"}
+
+    # Check session status
+    status = session.get("status", "UNKNOWN")
+    if status == "RUNNING":
+        return {"status": "training is going on"}
+    else:
+        return {"status": "training is completed"}
