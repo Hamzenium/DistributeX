@@ -70,6 +70,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuth, onNavigate }) => {
 
         if (authTab === 'signup') {
             data.username = formData.get('username');
+            data.phone_number = formData.get('phone_number') || '';
         }
 
         try {
@@ -152,21 +153,51 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuth, onNavigate }) => {
 
                         <form className="form" onSubmit={handleSubmit}>
                             {authTab === 'signup' && (
-                                <div className="field">
-                                    <label className="label">Username</label>
-                                    <input type="text" name="username" className="input" required />
-                                </div>
+                                <>
+                                    <div className="field">
+                                        <label className="label">Username</label>
+                                        <input
+                                            type="text"
+                                            name="username"
+                                            className="input"
+                                            placeholder="johndoe"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="field">
+                                        <label className="label">Phone Number (Optional)</label>
+                                        <input
+                                            type="tel"
+                                            name="phone_number"
+                                            className="input"
+                                            placeholder="+1 234 567 8900"
+                                        />
+                                    </div>
+                                </>
                             )}
 
                             <div className="field">
                                 <label className="label">Email</label>
-                                <input type="email" name="email" className="input" required />
+                                <input
+                                    type="email"
+                                    name="email"
+                                    className="input"
+                                    placeholder="you@example.com"
+                                    required
+                                />
                             </div>
 
                             <div className="field">
                                 <label className="label">Password</label>
                                 <div className="password-row">
-                                    <input type="password" name="password" className="input" required />
+                                    <input
+                                        type="password"
+                                        name="password"
+                                        className="input"
+                                        placeholder="••••••••"
+                                        required
+                                    />
                                 </div>
                             </div>
 
