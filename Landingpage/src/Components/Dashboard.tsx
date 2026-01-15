@@ -35,6 +35,29 @@ interface Session {
     peers: Peer[];
 }
 
+interface EpochResult {
+    epoch: number;
+    loss: number;
+    accuracy: number;
+    timestamp: string;
+}
+
+interface PeerData {
+    hyperparameters: {
+        lr?: number;
+        learning_rate?: number;
+        batch_size: number;
+        epochs: number;
+    };
+    epochs: EpochResult[];
+}
+
+interface FullResultsResponse {
+    session_id: string;
+    status: string;
+    peers: Record<string, PeerData>;
+}
+
 export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const [view, setView] = useState<'create' | 'sessions'>('sessions');
     const [ownedSessions, setOwnedSessions] = useState<Session[]>([]);
@@ -52,6 +75,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         { learning_rate: 0.01, batch_size: 64, epochs: 10 }
     ]);
 
+    // Real-time monitoring state
+    const [resultsData, setResultsData] = useState<FullResultsResponse | null>(null);
+    const [monitoringSessionId, setMonitoringSessionId] = useState<string | null>(null);
+
     const dashRef = useRef<HTMLDivElement>(null);
     const pollingInterval = useRef<number | null>(null);
 
@@ -66,12 +93,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         }
     }, []);
 
-    // Poll for updates when viewing a RUNNING session
+    // Poll for real-time updates when monitoring a session
     useEffect(() => {
-        if (selectedSession && selectedSession.status === 'RUNNING') {
+        if (monitoringSessionId && resultsData?.status === 'RUNNING') {
             pollingInterval.current = window.setInterval(() => {
-                fetchSessionDetails(selectedSession._id);
-            }, 2000);
+                fetchFullResults(monitoringSessionId);
+            }, 1000);
 
             return () => {
                 if (pollingInterval.current) {
@@ -79,7 +106,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 }
             };
         }
-    }, [selectedSession?._id, selectedSession?.status]);
+    }, [monitoringSessionId, resultsData?.status]);
 
     const getToken = () => localStorage.getItem('token');
 
@@ -115,6 +142,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         } catch (error: any) {
             console.error('API Error:', error);
             throw error;
+        }
+    };
+
+    const fetchFullResults = async (sessionId: string) => {
+        try {
+            const data = await apiCall(`/sessions/${sessionId}/full-results`, 'GET');
+            setResultsData(data);
+            setError(null);
+        } catch (err: any) {
+            console.error('Failed to fetch full results:', err);
+            setError(err.message);
         }
     };
 
@@ -156,15 +194,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             const formData = new FormData();
             formData.append('file', file);
             formData.append('num_peers', numPeers.toString());
-            formData.append('hyperparameters', JSON.stringify(hyperparameters));
+
+            // Create proper hyperparameters array with lr key (not learning_rate)
+            const hyperparamsForBackend = hyperparameters.map(param => ({
+                lr: param.learning_rate,
+                batch_size: param.batch_size,
+                epochs: param.epochs
+            }));
+
+            formData.append('hyperparameters', JSON.stringify(hyperparamsForBackend));
+
+            console.log('Sending hyperparameters:', hyperparamsForBackend);
 
             const result = await apiCall('/sessions/start', 'POST', formData);
 
-            // Don't fetch sessions, directly view the new session
             if (result.session_uid) {
-                // Wait 1 second for coordinator to start
+                // Start monitoring the new session
+                setMonitoringSessionId(result.session_uid);
+
+                // Wait 1 second then fetch initial data
                 setTimeout(async () => {
-                    await fetchSessionDetails(result.session_uid);
+                    await fetchFullResults(result.session_uid);
                 }, 1000);
             }
         } catch (err: any) {
@@ -184,20 +234,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         }
     };
 
-    const fetchSessionDetails = async (sessionId: string) => {
-        try {
-            const session = await apiCall(`/sessions/${sessionId}`, 'GET');
-            setSelectedSession(session);
-        } catch (err: any) {
-            console.error('Failed to fetch session details:', err);
+    const viewSessionDetails = (session: Session) => {
+        setMonitoringSessionId(session._id);
+        fetchFullResults(session._id);
+    };
+
+    const backToSessions = () => {
+        setMonitoringSessionId(null);
+        setResultsData(null);
+        if (pollingInterval.current) {
+            clearInterval(pollingInterval.current);
         }
+        fetchSessions();
     };
 
     useEffect(() => {
-        if (view === 'sessions' && !selectedSession) {
+        if (view === 'sessions' && !monitoringSessionId) {
             fetchSessions();
         }
     }, [view]);
+
+    useEffect(() => {
+        // Cleanup on unmount
+        return () => {
+            if (pollingInterval.current) {
+                clearInterval(pollingInterval.current);
+            }
+        };
+    }, []);
 
     const handleNumPeersChange = (newNum: number) => {
         if (newNum < 1 || newNum > 10 || !Number.isInteger(newNum)) {
@@ -223,20 +287,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         setHyperparameters(newParams);
     };
 
-    const viewSessionDetails = (session: Session) => {
-        setSelectedSession(session);
-    };
-
-    const backToSessions = () => {
-        setSelectedSession(null);
-        fetchSessions();
-    };
+    const colors = ['#f97316', '#06b6d4', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899'];
 
     const renderTrainingGraphs = () => {
-        if (!selectedSession) return null;
+        if (!resultsData) return null;
 
-        const colors = ['#f97316', '#06b6d4', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899'];
-        const hasResults = selectedSession.peers.some(p => p.results && p.results.length > 0);
+        const peerEntries = Object.entries(resultsData.peers);
+        const hasResults = peerEntries.some(([_, peer]) => peer.epochs.length > 0);
 
         return (
             <div style={{ marginTop: '2rem' }}>
@@ -262,23 +319,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                            <div className="session-id">Session ID: {selectedSession._id}</div>
+                            <div className="session-id">Session ID: {resultsData.session_id}</div>
                             <div className="session-info">
-                                <strong>Peers:</strong> {selectedSession.num_peers}
-                            </div>
-                            <div className="session-info">
-                                <strong>Created:</strong> {new Date(selectedSession.created_at).toLocaleString()}
+                                <strong>Peers:</strong> {peerEntries.length}
                             </div>
                         </div>
-                        <span className={`status-badge ${selectedSession.status === 'RUNNING' ? 'status-training' :
-                            selectedSession.status === 'COMPLETED' ? 'status-online' : 'status-offline'
+                        <span className={`status-badge ${resultsData.status === 'RUNNING' ? 'status-training' :
+                            resultsData.status === 'COMPLETED' ? 'status-online' : 'status-offline'
                             }`}>
-                            {selectedSession.status}
+                            {resultsData.status}
                         </span>
                     </div>
                 </div>
 
-                {!hasResults && selectedSession.status === 'RUNNING' && (
+                {!hasResults && resultsData.status === 'RUNNING' && (
                     <div className="card" style={{ padding: '2rem', textAlign: 'center', marginBottom: '1.5rem' }}>
                         <div className="spinner" style={{ margin: '0 auto 1rem' }} />
                         <p style={{ color: 'var(--muted)' }}>
@@ -315,11 +369,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                         }}
                                     />
                                     <Legend />
-                                    {selectedSession.peers.map((peer, idx) => (
-                                        peer.results && peer.results.length > 0 && (
+                                    {peerEntries.map(([peerId, peer], idx) => (
+                                        peer.epochs.length > 0 && (
                                             <Line
-                                                key={peer.uid}
-                                                data={peer.results}
+                                                key={peerId}
+                                                data={peer.epochs}
                                                 type="monotone"
                                                 dataKey="loss"
                                                 stroke={colors[idx % colors.length]}
@@ -361,11 +415,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                         }}
                                     />
                                     <Legend />
-                                    {selectedSession.peers.map((peer, idx) => (
-                                        peer.results && peer.results.length > 0 && (
+                                    {peerEntries.map(([peerId, peer], idx) => (
+                                        peer.epochs.length > 0 && (
                                             <Line
-                                                key={peer.uid}
-                                                data={peer.results}
+                                                key={peerId}
+                                                data={peer.epochs}
                                                 type="monotone"
                                                 dataKey="accuracy"
                                                 stroke={colors[idx % colors.length]}
@@ -385,22 +439,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 {/* Peer Details */}
                 <div className="section-title" style={{ marginBottom: '1rem' }}>Peer Details</div>
                 <div style={{ display: 'grid', gap: '1rem' }}>
-                    {selectedSession.peers.map((peer, idx) => (
-                        <div key={peer.uid} className="card" style={{ padding: '1.5rem' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                                <h4 style={{ color: colors[idx % colors.length], margin: 0 }}>
-                                    Peer {idx + 1}
-                                </h4>
-                                <span className={`status-badge ${peer.status === 'TRAINING' ? 'status-training' :
-                                    peer.status === 'COMPLETED' ? 'status-online' : 'status-offline'
-                                    }`}>
-                                    {peer.status}
-                                </span>
-                            </div>
-                            <div className="session-id" style={{ marginBottom: '0.5rem' }}>
-                                UID: {peer.uid}
-                            </div>
-                            {peer.hyperparameters && (
+                    {peerEntries.map(([peerId, peer], idx) => {
+                        const latestEpoch = peer.epochs[peer.epochs.length - 1];
+                        const lr = peer.hyperparameters.lr || peer.hyperparameters.learning_rate || 0;
+
+                        return (
+                            <div key={peerId} className="card" style={{ padding: '1.5rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                    <h4 style={{ color: colors[idx % colors.length], margin: 0 }}>
+                                        Peer {idx + 1}
+                                    </h4>
+                                    <span className={`status-badge ${peer.epochs.length > 0 ? 'status-training' : 'status-offline'}`}>
+                                        {peer.epochs.length > 0 ? 'TRAINING' : 'WAITING'}
+                                    </span>
+                                </div>
+                                <div className="session-id" style={{ marginBottom: '0.5rem' }}>
+                                    UID: {peerId}
+                                </div>
                                 <div style={{
                                     background: 'rgba(249,115,22,0.05)',
                                     padding: '0.75rem',
@@ -408,39 +463,39 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                     marginBottom: '1rem'
                                 }}>
                                     <div style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
-                                        LR: {peer.hyperparameters.learning_rate} •
+                                        LR: {lr} •
                                         Batch: {peer.hyperparameters.batch_size} •
                                         Epochs: {peer.hyperparameters.epochs}
                                     </div>
                                 </div>
-                            )}
-                            {peer.results && peer.results.length > 0 ? (
-                                <div>
-                                    <div style={{ fontSize: '0.9rem', color: 'var(--muted)', marginBottom: '0.5rem' }}>
-                                        Latest Results (Epoch {peer.results[peer.results.length - 1]?.epoch}):
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                        <div>
-                                            <div style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Loss</div>
-                                            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#fff' }}>
-                                                {peer.results[peer.results.length - 1]?.loss.toFixed(4)}
+                                {latestEpoch ? (
+                                    <div>
+                                        <div style={{ fontSize: '0.9rem', color: 'var(--muted)', marginBottom: '0.5rem' }}>
+                                            Latest Results (Epoch {latestEpoch.epoch}):
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                            <div>
+                                                <div style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Loss</div>
+                                                <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#fff' }}>
+                                                    {latestEpoch.loss.toFixed(4)}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Accuracy</div>
+                                                <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#fff' }}>
+                                                    {(latestEpoch.accuracy * 100).toFixed(2)}%
+                                                </div>
                                             </div>
                                         </div>
-                                        <div>
-                                            <div style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Accuracy</div>
-                                            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#fff' }}>
-                                                {(peer.results[peer.results.length - 1]?.accuracy * 100).toFixed(2)}%
-                                            </div>
-                                        </div>
                                     </div>
-                                </div>
-                            ) : (
-                                <div style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>
-                                    {selectedSession.status === 'RUNNING' ? 'Waiting for training data...' : 'No training data'}
-                                </div>
-                            )}
-                        </div>
-                    ))}
+                                ) : (
+                                    <div style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>
+                                        {resultsData.status === 'RUNNING' ? 'Waiting for training data...' : 'No training data'}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         );
@@ -468,7 +523,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 </div>
             </div>
 
-            {selectedSession ? (
+            {monitoringSessionId && resultsData ? (
                 renderTrainingGraphs()
             ) : (
                 <>
@@ -668,8 +723,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                         </div>
                     )}
                 </>
-            )
-            }
-        </div >
+            )}
+        </div>
     );
 };
