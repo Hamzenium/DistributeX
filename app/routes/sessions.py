@@ -78,10 +78,12 @@ async def start_session(
     try:
         hyperparams_list = json.loads(hyperparameters)
     except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Hyperparameters must be valid JSON")
+        raise HTTPException(
+            status_code=400, detail="Hyperparameters must be valid JSON")
 
     if not isinstance(hyperparams_list, list):
-        raise HTTPException(status_code=400, detail="Hyperparameters must be a list")
+        raise HTTPException(
+            status_code=400, detail="Hyperparameters must be a list")
 
     if len(hyperparams_list) != num_peers:
         raise HTTPException(
@@ -116,7 +118,8 @@ async def start_session(
     # Upload dataset to S3
     # --------------------------------------------------
     if not S3_BUCKET:
-        raise HTTPException(status_code=500, detail="S3_BUCKET_NAME not configured")
+        raise HTTPException(
+            status_code=500, detail="S3_BUCKET_NAME not configured")
 
     s3_key = f"sessions/{session_id}/dataset.csv"
 
@@ -205,6 +208,41 @@ async def start_session(
 # ============================================================================
 # Join Session (start worker)
 # ============================================================================
+
+
+@router.get("")
+async def get_sessions(user_id: str = Depends(get_current_user_id)):
+    """
+    Get all sessions for the current user (owned or joined).
+    """
+    try:
+        mongo_id = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user id")
+
+    user = users_collection.find_one({"_id": mongo_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Get sessions where user is owner or participant
+    owned_session_ids = user.get("owned_sessions", [])
+    joined_session_ids = user.get("joined_sessions", [])
+
+    all_session_ids = list(set(owned_session_ids + joined_session_ids))
+
+    sessions = list(sessions_collection.find(
+        {"_id": {"$in": all_session_ids}}))
+
+    # Convert ObjectId to string for JSON serialization
+    for session in sessions:
+        session["_id"] = str(session["_id"])
+        session["owner_user_id"] = str(session["owner_user_id"])
+        for peer in session.get("peers", []):
+            if "_id" in peer:
+                peer["_id"] = str(peer["_id"])
+
+    return {"sessions": sessions}
+
 
 @router.post("/join")
 async def join_session(user_id: str = Depends(get_current_user_id)):
