@@ -41,7 +41,6 @@ def signup(data: SignupRequest):
     }
 
 
-
 @router.post("/signin")
 def signin(data: SigninRequest):
     user = users_collection.find_one({"email": data.email})
