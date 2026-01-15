@@ -168,7 +168,6 @@ async def get_session_details(
 # Start session endpoint
 # ------------------------------------------------------------------
 
-
 @router.post("/start")
 async def start_session(
     num_peers: int = Form(...),
@@ -180,7 +179,9 @@ async def start_session(
     Creates a session and starts training asynchronously.
     """
 
+    # ----------------------------
     # Validate owner
+    # ----------------------------
     try:
         owner_oid = ObjectId(user_id)
     except Exception:
@@ -190,12 +191,15 @@ async def start_session(
     if not owner:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # ----------------------------
     # Parse hyperparameters
+    # ----------------------------
     try:
         hyperparams_list = json.loads(hyperparameters)
     except json.JSONDecodeError:
         raise HTTPException(
-            status_code=400, detail="Hyperparameters must be valid JSON")
+            status_code=400, detail="Hyperparameters must be valid JSON"
+        )
 
     if not isinstance(hyperparams_list, list) or len(hyperparams_list) != num_peers:
         raise HTTPException(
@@ -203,7 +207,9 @@ async def start_session(
             detail="Hyperparameters list must match num_peers",
         )
 
+    # ----------------------------
     # Find available peers
+    # ----------------------------
     available_users = list(
         users_collection.find(
             {"status": "ONLINE", "_id": {"$ne": owner_oid}}
@@ -216,7 +222,9 @@ async def start_session(
             detail="Not enough online peers available",
         )
 
+    # ----------------------------
     # Create session
+    # ----------------------------
     session_id = ObjectId()
     peers = {}
     results = {}
@@ -241,11 +249,25 @@ async def start_session(
             },
         )
 
+    # ----------------------------
+    # Update owner (coordinator) status
+    # ----------------------------
+    users_collection.update_one(
+        {"_id": owner_oid},
+        {
+            "$set": {"status": "COORDINATOR_RUNNING"},
+            "$addToSet": {"owned_sessions": session_id},
+        },
+    )
+
+    # ----------------------------
+    # Insert session document
+    # ----------------------------
     session_doc = {
         "_id": session_id,
         "owner_user_id": str(owner_oid),
         "num_peers": num_peers,
-        "dataset": {},
+        "dataset": {},  # will be updated after file upload
         "hyperparameters": hyperparams_list,
         "status": "RUNNING",
         "created_at": datetime.utcnow(),
@@ -257,18 +279,16 @@ async def start_session(
 
     sessions_collection.insert_one(session_doc)
 
-    # Link session to owner
-    users_collection.update_one(
-        {"_id": owner_oid},
-        {"$addToSet": {"owned_sessions": session_id}},
-    )
-
+    # ----------------------------
     # Save uploaded file locally
+    # ----------------------------
     with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
         temp_file_path = tmp.name
         tmp.write(await file.read())
 
-    # Spawn background process
+    # ----------------------------
+    # Spawn background coordinator
+    # ----------------------------
     Process(
         target=upload_and_start_coordinator,
         args=(
@@ -439,3 +459,46 @@ async def get_training_status(user_id: str = Depends(get_current_user_id)):
         return {"status": "training is going on"}
     else:
         return {"status": "training is completed"}
+# ------------------------------------------------------------------
+# GET: Session results with hyperparameters for plotting
+# ------------------------------------------------------------------
+@router.get("/{session_id}/full-results")
+async def get_full_results(session_id: str, user_id: str = Depends(get_current_user_id)):
+    """
+    Returns all peers in the session with their nested epoch results
+    suitable for plotting line graphs per peer.
+    """
+
+    # Validate IDs
+    try:
+        session_oid = ObjectId(session_id)
+        user_oid = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid session or user ID")
+
+    # Fetch session
+    session = sessions_collection.find_one({"_id": session_oid})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Authorization: owner or participant
+    owner_id = session.get("owner_user_id")
+    peer_ids = [peer.get("uid") for peer in session.get("peers", [])]
+
+    if str(user_oid) != owner_id and str(user_oid) not in peer_ids:
+        raise HTTPException(status_code=403, detail="Not authorized to view this session")
+
+    # Build nested results per peer
+    full_results = {}
+    for peer in session.get("peers", []):
+        peer_uid = peer.get("uid")
+        full_results[peer_uid] = {
+            "hyperparameters": peer.get("hyperparameters", {}),
+            "epochs": peer.get("results", [])
+        }
+
+    return {
+        "session_id": str(session_oid),
+        "status": session.get("status"),
+        "peers": full_results
+    }
