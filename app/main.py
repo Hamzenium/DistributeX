@@ -2,8 +2,9 @@ from fastapi import FastAPI
 from app.routes import auth
 from app.routes import sessions
 from fastapi.middleware.cors import CORSMiddleware
-
+from app.routes.sessions import router as sessions_router
 app = FastAPI()
+app.include_router(sessions_router)
 
 app.add_middleware(
     CORSMiddleware,

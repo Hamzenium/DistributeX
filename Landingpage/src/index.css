@@ -1,43 +1,45 @@
 :root {
-  --bg-900: #050505;
-  --panel: #0A0A0A;
+  --bg-900: #0f0f0f;
+  --panel: #1a1a1a;
   --muted: #9aa0a6;
   --accent: #f97316;
-  --card-border: rgba(60, 60, 60, 0.6);
+  --card-border: rgba(249, 115, 22, 0.2);
 }
 
 * {
-  box-sizing: border-box
+  box-sizing: border-box;
 }
 
 html,
 body,
 #root {
   height: 100%;
+  width: 100%;
   margin: 0;
-  padding: 0
+  padding: 0;
 }
 
 body {
-  background: var(--bg-900);
-  color: #fff;
+  background: #0a0a0a;
+  color: #e6eef8;
   font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 .page-root {
-  min-height: 100vh;
+
   position: relative;
   overflow-x: hidden;
-  background-image:
-    linear-gradient(#111 1px, transparent 1px),
-    linear-gradient(90deg, #111 1px, transparent 1px);
-  background-size: 40px 40px;
-  background-position: center;
+  background:
+    linear-gradient(135deg, #0a0a0a 0%, #1a1410 50%, #1a0f0a 100%),
+    linear-gradient(#1a1a1a 1px, transparent 1px),
+    linear-gradient(90deg, #1a1a1a 1px, transparent 1px);
+  background-size: auto, 40px 40px, 40px 40px;
+  background-position: center, center, center;
 }
 
-/* Landing Page */
+/* ============================================================================
+   LANDING PAGE
+   ============================================================================ */
 .landing {
   min-height: 100vh;
   display: flex;
@@ -123,6 +125,7 @@ body {
   font-size: 18px;
   font-weight: 700;
   margin: 0 0 8px;
+  color: #fff;
 }
 
 .feature-desc {
@@ -131,7 +134,35 @@ body {
   margin: 0;
 }
 
-/* Auth Pages */
+/* Back button for auth page */
+.back-btn {
+  position: fixed;
+  top: 2rem;
+  left: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(249, 115, 22, 0.2);
+  border-radius: 8px;
+  color: #e6eef8;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s;
+  z-index: 100;
+}
+
+.back-btn:hover {
+  background: rgba(249, 115, 22, 0.1);
+  border-color: rgba(249, 115, 22, 0.4);
+  transform: translateX(-2px);
+}
+
+/* ============================================================================
+   AUTH PAGE
+   ============================================================================ */
 .fixed-card {
   position: fixed;
   left: 50%;
@@ -153,8 +184,8 @@ body {
   width: 56px;
   height: 56px;
   border-radius: 12px;
-  border: 1px solid rgba(80, 80, 80, 0.6);
-  background: rgba(20, 20, 20, 0.6);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  background: rgba(26, 20, 16, 0.8);
   align-items: center;
   justify-content: center;
   margin: 0 auto 12px;
@@ -197,7 +228,7 @@ body {
 
 .tabs {
   display: flex;
-  border-bottom: 1px solid rgba(60, 60, 60, 0.6);
+  border-bottom: 1px solid var(--card-border);
 }
 
 .tab {
@@ -255,8 +286,8 @@ body {
   width: 100%;
   padding: 12px 14px;
   border-radius: 12px;
-  background: rgba(20, 20, 20, 0.6);
-  border: 1px solid rgba(60, 60, 60, 0.6);
+  background: rgba(30, 30, 30, 0.8);
+  border: 1px solid var(--card-border);
   color: #e6eef8;
   outline: none;
   transition: box-shadow .12s, border-color .12s;
@@ -264,8 +295,8 @@ body {
 }
 
 .input:focus {
-  border-color: rgba(249, 115, 22, 0.35);
-  box-shadow: 0 6px 20px rgba(249, 115, 22, 0.06);
+  border-color: rgba(249, 115, 22, 0.5);
+  box-shadow: 0 6px 20px rgba(249, 115, 22, 0.1);
 }
 
 .password-row {
@@ -296,26 +327,33 @@ body {
   justify-content: center;
   gap: 8px;
   width: 100%;
-  background: #fff;
-  color: #000;
+  background: linear-gradient(135deg, #ff8c00, #f97316);
+  color: #fff;
   padding: 12px 14px;
   border-radius: 12px;
   border: 0;
   font-weight: 700;
   cursor: pointer;
   overflow: hidden;
+  transition: all 0.3s;
+}
+
+.primary-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px rgba(249, 115, 22, 0.4);
 }
 
 .primary-btn:disabled {
   opacity: 0.7;
   cursor: default;
+  transform: none;
 }
 
 .spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid #666;
-  border-top-color: #111;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
   border-radius: 50%;
   animation: spin .9s linear infinite;
 }
@@ -341,8 +379,8 @@ body {
 
 .card-footer {
   padding: 18px 20px;
-  border-top: 1px solid rgba(60, 60, 60, 0.6);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.01), transparent);
+  border-top: 1px solid var(--card-border);
+  background: linear-gradient(180deg, rgba(249, 115, 22, 0.02), transparent);
 }
 
 .meta {
@@ -375,11 +413,14 @@ body {
   margin-bottom: 12px;
 }
 
-/* Dashboard */
+/* ============================================================================
+   DASHBOARD
+   ============================================================================ */
 .dashboard {
-  max-width: 1200px;
+  align-items: center;
   margin: 0 auto;
   padding: 40px 20px;
+  animation: infinite;
 }
 
 .dash-header {
@@ -395,16 +436,26 @@ body {
   font-size: 32px;
   font-weight: 700;
   margin: 0;
+  background: linear-gradient(180deg, #fff, #cfcfcf);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .logout-btn {
   background: transparent;
-  color: var(--accent);
+  color: #e6eef8;
   border: 1px solid rgba(249, 115, 22, 0.3);
   padding: 10px 20px;
   border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
+  transition: all 0.3s;
+}
+
+.logout-btn:hover {
+  background: rgba(249, 115, 22, 0.1);
+  border-color: rgba(249, 115, 22, 0.5);
 }
 
 .status-badge {
@@ -443,6 +494,7 @@ body {
   font-size: 20px;
   font-weight: 700;
   margin: 0 0 16px;
+  color: #fff;
 }
 
 .session-grid {
@@ -456,6 +508,13 @@ body {
   border: 1px solid var(--card-border);
   border-radius: 12px;
   padding: 20px;
+  transition: all 0.3s;
+}
+
+.session-card:hover {
+  border-color: rgba(249, 115, 22, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px rgba(249, 115, 22, 0.1);
 }
 
 .session-id {
@@ -468,6 +527,7 @@ body {
 .session-info {
   margin: 8px 0;
   font-size: 14px;
+  color: #e6eef8;
 }
 
 .session-info strong {
@@ -497,7 +557,10 @@ body {
   display: none;
 }
 
-@media (max-width:768px) {
+/* ============================================================================
+   RESPONSIVE
+   ============================================================================ */
+@media (max-width: 768px) {
   .hero-title {
     font-size: 42px;
   }
@@ -509,5 +572,10 @@ body {
 
   .cta-btn {
     width: 100%;
+  }
+
+  .dash-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

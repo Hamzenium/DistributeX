@@ -23,6 +23,8 @@ HEARTBEAT_WORKER = "heartbeat-worker"
 # ------------------------------------------------------------------
 # Helper: generate command queue name
 # ------------------------------------------------------------------
+
+
 def user_command_queue(session_uid: str) -> str:
     """
     Generates a command queue name for a given session/user.
@@ -32,6 +34,8 @@ def user_command_queue(session_uid: str) -> str:
 # ------------------------------------------------------------------
 # Background process: upload CSV → update session → start coordinator
 # ------------------------------------------------------------------
+
+
 def upload_and_start_coordinator(
     temp_file_path: str,
     original_filename: str,
@@ -81,8 +85,90 @@ def upload_and_start_coordinator(
         pass
 
 # ------------------------------------------------------------------
+# GET: List all sessions for the current user
+# ------------------------------------------------------------------
+
+
+@router.get("")
+async def get_sessions(user_id: str = Depends(get_current_user_id)):
+    """
+    Returns all sessions owned by or joined by the current user.
+    """
+    try:
+        user_oid = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user id")
+
+    user = users_collection.find_one({"_id": user_oid})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Get owned sessions
+    owned_session_ids = user.get("owned_sessions", [])
+    owned_sessions = list(
+        sessions_collection.find({"_id": {"$in": owned_session_ids}})
+    )
+
+    # Get joined sessions
+    joined_session_ids = user.get("joined_sessions", [])
+    joined_sessions = list(
+        sessions_collection.find({"_id": {"$in": joined_session_ids}})
+    )
+
+    # Convert ObjectId to string for JSON serialization
+    for session in owned_sessions + joined_sessions:
+        session["_id"] = str(session["_id"])
+        session["owner_user_id"] = str(session.get("owner_user_id", ""))
+
+    return {
+        "owned_sessions": owned_sessions,
+        "joined_sessions": joined_sessions,
+    }
+
+
+# ------------------------------------------------------------------
+# GET: Session details by ID
+# ------------------------------------------------------------------
+@router.get("/{session_id}")
+async def get_session_details(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Returns detailed information about a specific session.
+    User must be either the owner or a participant.
+    """
+    try:
+        user_oid = ObjectId(user_id)
+        session_oid = ObjectId(session_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    session = sessions_collection.find_one({"_id": session_oid})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Check authorization: user must be owner or participant
+    owner_id = session.get("owner_user_id")
+    peer_ids = [peer.get("uid") for peer in session.get("peers", [])]
+
+    if str(user_oid) != owner_id and str(user_oid) not in peer_ids:
+        raise HTTPException(
+            status_code=403,
+            detail="Not authorized to view this session"
+        )
+
+    # Convert ObjectId to string for JSON serialization
+    session["_id"] = str(session["_id"])
+    session["owner_user_id"] = str(session.get("owner_user_id", ""))
+
+    return session
+
+# ------------------------------------------------------------------
 # Start session endpoint
 # ------------------------------------------------------------------
+
+
 @router.post("/start")
 async def start_session(
     num_peers: int = Form(...),
@@ -108,7 +194,8 @@ async def start_session(
     try:
         hyperparams_list = json.loads(hyperparameters)
     except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Hyperparameters must be valid JSON")
+        raise HTTPException(
+            status_code=400, detail="Hyperparameters must be valid JSON")
 
     if not isinstance(hyperparams_list, list) or len(hyperparams_list) != num_peers:
         raise HTTPException(
@@ -202,6 +289,8 @@ async def start_session(
 # ------------------------------------------------------------------
 # Join session endpoint
 # ------------------------------------------------------------------
+
+
 @router.post("/join")
 async def join_session(user_id: str = Depends(get_current_user_id)):
     """
@@ -265,6 +354,8 @@ async def join_session(user_id: str = Depends(get_current_user_id)):
 # ------------------------------------------------------------------
 # Send command to worker
 # ------------------------------------------------------------------
+
+
 @router.post("/command")
 async def send_command(
     command: str,
@@ -292,6 +383,8 @@ async def send_command(
 # ------------------------------------------------------------------
 # Leave session (stop worker)
 # ------------------------------------------------------------------
+
+
 @router.post("/leave")
 async def leave_session(user_id: str = Depends(get_current_user_id)):
     """
@@ -313,6 +406,8 @@ async def leave_session(user_id: str = Depends(get_current_user_id)):
 # ------------------------------------------------------------------
 # Check training status (user-scoped)
 # ------------------------------------------------------------------
+
+
 @router.get("/training-status")
 async def get_training_status(user_id: str = Depends(get_current_user_id)):
     """
