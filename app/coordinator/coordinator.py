@@ -1,12 +1,15 @@
 """
 Coordinator Process
 
-Orchestrates ONE training session.
+This process orchestrates a single training session.
 
-- Enables peers
-- Starts training
-- Collects heartbeats + loss
-- Acts as authoritative execution controller
+Responsibilities:
+1. Enable peers for training.
+2. Send TRAIN commands with hyperparameters and dataset info.
+3. Collect per-epoch training results and heartbeats.
+4. Track when each peer completes.
+5. Send STOP commands to all peers after training.
+6. Update MongoDB: peer statuses, user statuses, and top-level session results.
 """
 
 import asyncio
@@ -15,19 +18,16 @@ import os
 import ssl
 from datetime import datetime
 from bson import ObjectId
+import urllib.parse
 
 import aio_pika
 from pymongo import MongoClient
 import certifi
-
-
-# ============================================================================
-# MongoDB setup (EXPLICIT DB SELECTION)
-# ============================================================================
-
 from dotenv import load_dotenv
-import urllib.parse
 
+# ---------------------------------------------------------------------------
+# Load environment variables (MongoDB & RabbitMQ credentials)
+# ---------------------------------------------------------------------------
 load_dotenv()
 
 MONGO_USERNAME = os.getenv("MONGO_USERNAME")
@@ -54,19 +54,18 @@ mongo_client = MongoClient(
 
 db = mongo_client[MONGO_DB]
 sessions_collection = db["sessions"]
+users_collection = db["users"]
 
-
-# ============================================================================
-# RabbitMQ helpers
-# ============================================================================
-
+# ---------------------------------------------------------------------------
+# RabbitMQ helper functions
+# ---------------------------------------------------------------------------
 async def connect_rabbitmq():
     rabbit_url = os.getenv("RABBITMQ_URL")
     if not rabbit_url:
         raise RuntimeError("RABBITMQ_URL not configured")
 
     ssl_ctx = ssl.create_default_context()
-    ssl_ctx.load_verify_locations("isrgrootx1.pem")
+    ssl_ctx.load_verify_locations("isrgrootx1.pem")  # root certificate
 
     connection = await aio_pika.connect_robust(
         rabbit_url,
@@ -75,14 +74,10 @@ async def connect_rabbitmq():
 
     channel = await connection.channel()
     await channel.set_qos(prefetch_count=1)
-
     return connection, channel
 
 
 async def publish_command(channel, queue_name: str, payload):
-    """
-    Send a control command to a peer.
-    """
     if isinstance(payload, dict):
         body = json.dumps(payload).encode()
     else:
@@ -94,46 +89,122 @@ async def publish_command(channel, queue_name: str, payload):
     )
 
 
-# ============================================================================
-# Coordinator consumer
-# ============================================================================
-
+# ---------------------------------------------------------------------------
+# Event consumer
+# ---------------------------------------------------------------------------
 async def start_event_consumer(channel, queue_name: str, event_queue: asyncio.Queue):
     """
-    Long-lived consumer for peer → coordinator events.
-    Handles BOTH raw and JSON payloads.
+    Consume messages from peers and push them to an asyncio.Queue.
     """
-
+    # Declare queue before sending any commands
     queue = await channel.declare_queue(queue_name, durable=True)
 
     async def on_message(message: aio_pika.IncomingMessage):
         async with message.process():
             raw = message.body.decode()
-
-            # Try JSON first
             try:
                 payload = json.loads(raw)
             except Exception:
-                payload = raw  # raw heartbeat (session_uid)
-
+                payload = raw
             event_queue.put_nowait(payload)
 
     await queue.consume(on_message)
-    print(f"[coordinator] consuming {queue_name}")
+    print(f"[coordinator] consuming {queue_name}", flush=True)
 
 
-# ============================================================================
-# Coordinator main logic
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Event handler
+# ---------------------------------------------------------------------------
+async def handle_events(event_queue: asyncio.Queue, session_oid, peers, coordinator_uid):
+    total_peers = len(peers)
+    completed_peers = set()
 
-async def coordinator_main(session_uid: str):
-    print(f"[coordinator] starting for session {session_uid}")
+    while True:
+        event = await event_queue.get()
+
+        if not isinstance(event, dict):
+            print(f"[coordinator:{coordinator_uid}] raw event: {event}", flush=True)
+            continue
+
+        peer_uid = event.get("peer_uid")
+        if not peer_uid:
+            continue
+
+        # ----------------------------
+        # EPOCH HEARTBEAT
+        # ----------------------------
+        if "epoch" in event:
+            epoch_result = {
+                "epoch": event["epoch"],
+                "loss": event["loss"],
+                "accuracy": event["accuracy"],
+                "timestamp": datetime.utcnow(),
+            }
+
+            # per-peer
+            sessions_collection.update_one(
+                {"_id": session_oid, "peers.uid": peer_uid},
+                {"$push": {"peers.$.results": epoch_result}},
+            )
+
+            # global aggregation
+            sessions_collection.update_one(
+                {"_id": session_oid},
+                {"$push": {f"results.{peer_uid}": epoch_result}},
+            )
+
+            print(
+                f"[coordinator:{coordinator_uid}] "
+                f"{peer_uid} epoch {event['epoch']} "
+                f"loss={event['loss']:.4f} acc={event['accuracy']:.4f}",
+                flush=True,
+            )
+
+        # ----------------------------
+        # IDLE HEARTBEAT
+        # ----------------------------
+        elif event.get("status") == "idle":
+            print(f"[coordinator:{coordinator_uid}] {peer_uid} idle", flush=True)
+
+        # ----------------------------
+        # COMPLETION
+        # ----------------------------
+        elif event.get("type") == "DONE" and event.get("status") == "completed":
+            completed_peers.add(peer_uid)
+
+            sessions_collection.update_one(
+                {"_id": session_oid, "peers.uid": peer_uid},
+                {"$set": {"peers.$.status": "OFFLINE"}},
+            )
+
+            users_collection.update_one(
+                {"_id": ObjectId(peer_uid)},
+                {"$set": {"status": "OFFLINE"}},
+            )
+
+            print(
+                f"[coordinator:{coordinator_uid}] "
+                f"{peer_uid} completed ({len(completed_peers)}/{total_peers})",
+                flush=True,
+            )
+
+        # ----------------------------
+        # EXIT CONDITION
+        # ----------------------------
+        if len(completed_peers) == total_peers:
+            break
+
+    return completed_peers
+
+
+
+# ---------------------------------------------------------------------------
+# Main coordinator logic
+# ---------------------------------------------------------------------------
+async def coordinator_main(session_uid: str, coordinator_uid: str):
+    print(f"[coordinator:{coordinator_uid}] starting for session {session_uid}", flush=True)
 
     session_oid = ObjectId(session_uid)
-
-    # --------------------------------------------------
-    # Load session
-    # --------------------------------------------------
     session = sessions_collection.find_one({"_id": session_oid})
     if not session:
         raise RuntimeError("Session not found")
@@ -142,96 +213,81 @@ async def coordinator_main(session_uid: str):
     if not peers:
         raise RuntimeError("Session has no peers")
 
-    # --------------------------------------------------
-    # Setup RabbitMQ
-    # --------------------------------------------------
     connection, channel = await connect_rabbitmq()
-
-    coordinator_queue = f"coordinator.{session_uid}.events"
+    coordinator_queue = f"coordinator.{coordinator_uid}.events"
     event_queue = asyncio.Queue()
 
+    # Create consumer queue BEFORE sending anything
     await start_event_consumer(channel, coordinator_queue, event_queue)
 
-    # --------------------------------------------------
-    # ENABLE peers
-    # --------------------------------------------------
-    for peer in peers:
-        await publish_command(
-            channel,
-            peer["peer_queue"],
-            {
-                "type": "ENABLE",
-                "queue": coordinator_queue,
-            },
-        )
+    try:
+        # Enable peers
+        for peer in peers:
+            await publish_command(
+                channel,
+                peer["peer_queue"],
+                {"type": "ENABLE", "queue": coordinator_queue, "coordinator_uid": coordinator_uid},
+            )
+        print(f"[coordinator:{coordinator_uid}] peers enabled", flush=True)
+        await asyncio.sleep(2)  # safety delay
 
-    print("[coordinator] peers enabled")
+        # Build TRAIN payload
+        dataset_info = session.get("dataset", {})
+        csv_link = f"s3://{dataset_info.get('s3_bucket')}/{dataset_info.get('s3_key')}"
 
-    # --------------------------------------------------
-    # Safety delay
-    # --------------------------------------------------
-    await asyncio.sleep(5)
+        hyperparams = session.get("hyperparameters", [{}])[0]
 
-    # --------------------------------------------------
-    # TRAIN peers
-    # --------------------------------------------------
-    for peer in peers:
-        await publish_command(
-            channel,
-            peer["peer_queue"],
-            "TRAIN",
-        )
+        x_labels = [col for col in dataset_info.get("columns", []) if col != "label"]
+        y_label = "label"
 
-    print("[coordinator] training started")
+        train_payload = {
+            "type": "TRAIN",
+            "csv_link": csv_link,
+            "x_labels": x_labels,
+            "y_label": y_label,
+            "batch_size": hyperparams.get("batch_size"),
+            "epochs": hyperparams.get("epochs"),
+            "learning_rate": hyperparams.get("lr"),
+            "coordinator_uid": coordinator_uid,
+        }
 
-    # --------------------------------------------------
-    # Collect heartbeats + loss
-    # --------------------------------------------------
-    peer_results = {}
+        # Send TRAIN command to all peers
+        for peer in peers:
+            await publish_command(channel, peer["peer_queue"], train_payload)
+        print(f"[coordinator:{coordinator_uid}] training started with payload", flush=True)
 
-    while True:
-        event = await event_queue.get()
+        # Handle events
+        await handle_events(event_queue, session_oid, peers, coordinator_uid)
 
-        # ------------------------------
-        # Case 1: raw heartbeat (string)
-        # ------------------------------
-        if isinstance(event, str):
-            # This is a liveness heartbeat (session_uid)
-            print(f"[coordinator] heartbeat received for session {event}")
-            continue
+        # Send STOP to all peers
+        for peer in peers:
+            await publish_command(channel, peer["peer_queue"], "STOP")
+        print(f"[coordinator:{coordinator_uid}] STOP sent to all peers", flush=True)
 
-        # ------------------------------
-        # Case 2: training heartbeat
-        # ------------------------------
-        peer_uid = event.get("peer_uid")
-        loss = event.get("loss")
-
-        if not peer_uid:
-            continue
-
-        peer_results.setdefault(peer_uid, []).append(
-            {
-                "loss": loss,
-                "ts": datetime.utcnow(),
-            }
-        )
-
-        print(f"[coordinator] {peer_uid} → loss={loss}")
-
-        # Optional: persist progress
+        # Update session
         sessions_collection.update_one(
-            {"_id": session_oid, "peers.uid": peer_uid},
-            {
-                "$set": {
-                    "updated_at": datetime.utcnow(),
-                }
-            },
+            {"_id": session_oid},
+            {"$set": {"status": "COMPLETED", "completed_at": datetime.utcnow(), "coordinator_uid": coordinator_uid}},
         )
+        print(f"[coordinator:{coordinator_uid}] session COMPLETED", flush=True)
+
+    finally:
+        await channel.close()
+        await connection.close()
+        print(f"[coordinator:{coordinator_uid}] RabbitMQ connection closed", flush=True)
+
+        # Cancel pending tasks
+        pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
 
 
-# ============================================================================
+# ---------------------------------------------------------------------------
 # Multiprocessing entrypoint
-# ============================================================================
-
-def run_coordinator(session_uid: str):
-    asyncio.run(coordinator_main(session_uid))
+# ---------------------------------------------------------------------------
+def run_coordinator(session_uid: str, coordinator_uid: str):
+    """
+    Entrypoint for Process(target=run_coordinator, args=(session_uid, coordinator_uid))
+    """
+    asyncio.run(coordinator_main(session_uid, coordinator_uid))
