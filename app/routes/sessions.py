@@ -42,30 +42,47 @@ def track_event(
     event_type: str,
     user_id: str,
     session_id: str | None = None,
-    props: dict | None = None
+    props: dict | None = None,
 ):
+    assert AMPLITUDE_API_KEY, "AMPLITUDE_API_KEY is missing"
+
     payload = {
         "api_key": AMPLITUDE_API_KEY,
-        "events": [{
-            "user_id": str(user_id),
-            "event_type": event_type,
-            "event_properties": {
-                "session_id": session_id,
-                **(props or {})
+        "events": [
+            {
+                "user_id": str(user_id),
+                "event_type": event_type,
+                "time": int(datetime.utcnow().timestamp() * 1000),
+                "event_properties": {
+                    **({"session_id": session_id} if session_id else {}),
+                    **(props or {}),
+                },
             }
-        }]
+        ],
     }
 
     try:
         response = requests.post(
             AMPLITUDE_URL,
             json=payload,
-            timeout=5
+            headers={"Content-Type": "application/json"},
+            timeout=5,
         )
-        if response.status_code != 200:
-            print(f"Amplitude error: {response.status_code}, {response.text}")
+
+        print("Amplitude status:", response.status_code)
+        print("Amplitude response:", response.text)
+
     except Exception as e:
-        print(f"Amplitude request failed: {e}")
+        print("Amplitude request failed:", e)
+
+@router.get("/amplitude-test")
+async def amplitude_test():
+    track_event(
+        event_type="amplitude_test_event",
+        user_id="debug_user_123",
+        props={"source": "fastapi"}
+    )
+    return {"ok": True}
 
 # ------------------------------------------------------------------
 # Helper: generate command queue name
@@ -619,3 +636,23 @@ Keep it short and beginner-friendly.
             status_code=500,
             detail=f"Gemini API error: {str(e)}"
         )
+    
+@router.get("/peers/online")
+async def get_online_peers(user_id: str = Depends(get_current_user_id)):
+    """
+    Returns how many peers are currently ONLINE.
+    """
+
+    online_count = users_collection.count_documents(
+        {"status": "ONLINE"}
+    )
+
+    track_event(
+        event_type="View_Online_Peers",
+        user_id=user_id,
+        props={"online_peers": online_count}
+    )
+
+    return {
+        "online_peers": online_count
+    }
