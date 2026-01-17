@@ -9,13 +9,18 @@ gsap.registerPlugin(useGSAP, ScrollTrigger);
 const API_BASE = 'http://localhost:8000';
 
 // ============================================
+// Type Definitions
+// ============================================
+export type UserRole = 'peer' | 'trainer';
+
+// ============================================
 // Neural Network Animation Component
 // ============================================
 interface NeuralNetworkProps {
     isTraining: boolean;
     height?: number;
-    numPeers?: number;      // Number of peers determines number of layers
-    epochs?: number;        // Epochs shown in the labels
+    numPeers?: number;
+    epochs?: number;
 }
 
 const NeuralNetwork: React.FC<NeuralNetworkProps> = ({
@@ -34,42 +39,34 @@ const NeuralNetwork: React.FC<NeuralNetworkProps> = ({
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        // Dynamic network configuration based on numPeers
-        // Creates layers: Input -> Hidden layers (based on peers) -> Output
         const generateLayers = () => {
             const layers = [];
-            const numLayers = Math.max(2, Math.min(numPeers + 2, 8)); // Min 2, Max 8 layers
-
-            // Calculate neuron counts (decreasing from input to output)
+            const numLayers = Math.max(2, Math.min(numPeers + 2, 8));
             const maxNeurons = 8;
             const minNeurons = 2;
 
             for (let i = 0; i < numLayers; i++) {
                 const progress = i / (numLayers - 1);
                 const neurons = Math.round(maxNeurons - (maxNeurons - minNeurons) * progress);
-
-                // Size represents the actual layer size in the network
                 let size;
-                if (i === 0) size = 784;  // Input layer (e.g., MNIST)
-                else if (i === numLayers - 1) size = 10;  // Output layer
-                else size = Math.round(128 / (i * 0.5 + 1));  // Hidden layers
+                if (i === 0) size = 784;
+                else if (i === numLayers - 1) size = 10;
+                else size = Math.round(128 / (i * 0.5 + 1));
 
                 layers.push({
                     neurons,
-                    label: `P${i + 1}`,  // P1, P2, P3... for Peer layers
+                    label: `P${i + 1}`,
                     size,
-                    epoch: Math.round((epochs / numLayers) * (i + 1))  // Distribute epochs across layers
+                    epoch: Math.round((epochs / numLayers) * (i + 1))
                 });
             }
             return layers;
         };
 
         const layers = generateLayers();
-
         const padding = 60;
         const layerSpacing = (canvas.width - padding * 2) / (layers.length - 1);
 
-        // Animation state
         let pulsePhase = 0;
         let connectionPulses: Array<{
             from: number;
@@ -80,11 +77,9 @@ const NeuralNetwork: React.FC<NeuralNetworkProps> = ({
             speed: number;
         }> = [];
 
-        // Calculate neuron positions
         const neuronPositions = layers.map((layer, layerIdx) => {
             const x = padding + layerIdx * layerSpacing;
             const neuronSpacing = (canvas.height - padding * 2) / (layer.neurons - 1);
-
             return Array.from({ length: layer.neurons }, (_, neuronIdx) => ({
                 x,
                 y: padding + neuronIdx * neuronSpacing,
@@ -93,15 +88,12 @@ const NeuralNetwork: React.FC<NeuralNetworkProps> = ({
             }));
         });
 
-        // Create initial connection pulses
         const createPulse = () => {
             if (!isTraining) return;
-
             const fromLayer = Math.floor(Math.random() * (layers.length - 1));
             const toLayer = fromLayer + 1;
             const fromNeuron = Math.floor(Math.random() * layers[fromLayer].neurons);
             const toNeuron = Math.floor(Math.random() * layers[toLayer].neurons);
-
             connectionPulses.push({
                 from: fromLayer,
                 to: toLayer,
@@ -114,26 +106,21 @@ const NeuralNetwork: React.FC<NeuralNetworkProps> = ({
 
         const animate = () => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
             pulsePhase += 0.02;
 
-            // Update and filter pulses
             connectionPulses = connectionPulses.filter(pulse => {
                 pulse.progress += pulse.speed;
                 return pulse.progress <= 1;
             });
 
-            // Create new pulses randomly
             if (isTraining && Math.random() < 0.3) {
                 createPulse();
             }
 
-            // Draw connections
             layers.forEach((layer, layerIdx) => {
                 if (layerIdx < layers.length - 1) {
                     neuronPositions[layerIdx].forEach((fromPos, fromIdx) => {
                         neuronPositions[layerIdx + 1].forEach((toPos, toIdx) => {
-                            // Base connection
                             ctx.strokeStyle = 'rgba(249, 115, 22, 0.1)';
                             ctx.lineWidth = 1;
                             ctx.beginPath();
@@ -141,7 +128,6 @@ const NeuralNetwork: React.FC<NeuralNetworkProps> = ({
                             ctx.lineTo(toPos.x, toPos.y);
                             ctx.stroke();
 
-                            // Draw active pulses
                             const activePulses = connectionPulses.filter(
                                 p => p.from === layerIdx && p.to === layerIdx + 1 &&
                                     p.fromNeuron === fromIdx && p.toNeuron === toIdx
@@ -150,13 +136,10 @@ const NeuralNetwork: React.FC<NeuralNetworkProps> = ({
                             activePulses.forEach(pulse => {
                                 const x = fromPos.x + (toPos.x - fromPos.x) * pulse.progress;
                                 const y = fromPos.y + (toPos.y - fromPos.y) * pulse.progress;
-
-                                // Glowing pulse
                                 const gradient = ctx.createRadialGradient(x, y, 0, x, y, 15);
                                 gradient.addColorStop(0, 'rgba(249, 115, 22, 0.8)');
                                 gradient.addColorStop(0.5, 'rgba(249, 115, 22, 0.4)');
                                 gradient.addColorStop(1, 'rgba(249, 115, 22, 0)');
-
                                 ctx.fillStyle = gradient;
                                 ctx.beginPath();
                                 ctx.arc(x, y, 15, 0, Math.PI * 2);
@@ -167,7 +150,6 @@ const NeuralNetwork: React.FC<NeuralNetworkProps> = ({
                 }
             });
 
-            // Draw neurons
             neuronPositions.forEach((layerNeurons, layerIdx) => {
                 layerNeurons.forEach((pos, neuronIdx) => {
                     const isActive = connectionPulses.some(
@@ -175,22 +157,18 @@ const NeuralNetwork: React.FC<NeuralNetworkProps> = ({
                             (p.to === layerIdx && p.toNeuron === neuronIdx)
                     );
 
-                    // Neuron glow when training
                     if (isTraining) {
                         const glowIntensity = isActive ? 0.6 : 0.2 + Math.sin(pulsePhase + neuronIdx) * 0.1;
                         const glowRadius = isActive ? 12 : 8;
-
                         const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, glowRadius);
                         gradient.addColorStop(0, `rgba(249, 115, 22, ${glowIntensity})`);
                         gradient.addColorStop(1, 'rgba(249, 115, 22, 0)');
-
                         ctx.fillStyle = gradient;
                         ctx.beginPath();
                         ctx.arc(pos.x, pos.y, glowRadius, 0, Math.PI * 2);
                         ctx.fill();
                     }
 
-                    // Neuron circle
                     ctx.fillStyle = isActive && isTraining ? '#f97316' : 'rgba(249, 115, 22, 0.3)';
                     ctx.beginPath();
                     ctx.arc(pos.x, pos.y, 4, 0, Math.PI * 2);
@@ -203,10 +181,8 @@ const NeuralNetwork: React.FC<NeuralNetworkProps> = ({
                     }
                 });
 
-                // Layer labels
                 const layer = layers[layerIdx];
                 const firstNeuron = layerNeurons[0];
-
                 ctx.fillStyle = '#9aa0a6';
                 ctx.font = '14px monospace';
                 ctx.textAlign = 'center';
@@ -244,11 +220,7 @@ const NeuralNetwork: React.FC<NeuralNetworkProps> = ({
                 ref={canvasRef}
                 width={1200}
                 height={height}
-                style={{
-                    width: '100%',
-                    height: '100%',
-                    display: 'block'
-                }}
+                style={{ width: '100%', height: '100%', display: 'block' }}
             />
             <div style={{
                 position: 'absolute',
@@ -283,6 +255,8 @@ const NeuralNetwork: React.FC<NeuralNetworkProps> = ({
 interface DashboardProps {
     user: { email: string; username: string } | null;
     onLogout: () => void;
+    userRole: UserRole | null;
+    onChangeRole?: () => void;
 }
 
 interface TrainingResult {
@@ -383,7 +357,6 @@ const PeerCard: React.FC<PeerCardProps> = ({ peerId, peer, index, color, status 
 
             {peer.epochs.length > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                    {/* Mini Loss Chart */}
                     <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '0.75rem' }}>
                         <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginBottom: '0.5rem' }}>Loss</div>
                         <ResponsiveContainer width="100%" height={80}>
@@ -394,13 +367,7 @@ const PeerCard: React.FC<PeerCardProps> = ({ peerId, peer, index, color, status 
                                         <stop offset="95%" stopColor={color} stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
-                                <Area
-                                    type="monotone"
-                                    dataKey="loss"
-                                    stroke={color}
-                                    fill={`url(#lossGrad-${index})`}
-                                    strokeWidth={2}
-                                />
+                                <Area type="monotone" dataKey="loss" stroke={color} fill={`url(#lossGrad-${index})`} strokeWidth={2} />
                             </AreaChart>
                         </ResponsiveContainer>
                         <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#fff' }}>
@@ -408,7 +375,6 @@ const PeerCard: React.FC<PeerCardProps> = ({ peerId, peer, index, color, status 
                         </div>
                     </div>
 
-                    {/* Mini Accuracy Chart */}
                     <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '0.75rem' }}>
                         <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginBottom: '0.5rem' }}>Accuracy</div>
                         <ResponsiveContainer width="100%" height={80}>
@@ -419,13 +385,7 @@ const PeerCard: React.FC<PeerCardProps> = ({ peerId, peer, index, color, status 
                                         <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
-                                <Area
-                                    type="monotone"
-                                    dataKey="accuracy"
-                                    stroke="#10b981"
-                                    fill={`url(#accGrad-${index})`}
-                                    strokeWidth={2}
-                                />
+                                <Area type="monotone" dataKey="accuracy" stroke="#10b981" fill={`url(#accGrad-${index})`} strokeWidth={2} />
                             </AreaChart>
                         </ResponsiveContainer>
                         <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#10b981' }}>
@@ -452,7 +412,7 @@ const PeerCard: React.FC<PeerCardProps> = ({ peerId, peer, index, color, status 
 // ============================================
 // Main Dashboard Component
 // ============================================
-export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, userRole, onChangeRole }) => {
     const [view, setView] = useState<'create' | 'sessions'>('sessions');
     const [ownedSessions, setOwnedSessions] = useState<Session[]>([]);
     const [joinedSessions, setJoinedSessions] = useState<Session[]>([]);
@@ -461,7 +421,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Form state
     const [numPeers, setNumPeers] = useState(2);
     const [file, setFile] = useState<File | null>(null);
     const [hyperparameters, setHyperparameters] = useState<any[]>([
@@ -469,7 +428,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         { learning_rate: 0.01, batch_size: 64, epochs: 10 }
     ]);
 
-    // Real-time monitoring state
     const [resultsData, setResultsData] = useState<FullResultsResponse | null>(null);
     const [monitoringSessionId, setMonitoringSessionId] = useState<string | null>(null);
 
@@ -487,7 +445,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         }
     }, []);
 
-    // Poll for real-time updates when monitoring a session
     useEffect(() => {
         if (monitoringSessionId && resultsData?.status === 'RUNNING') {
             pollingInterval.current = window.setInterval(() => {
@@ -506,10 +463,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
     const apiCall = async (endpoint: string, method = 'GET', body: any = null) => {
         const token = getToken();
-        const headers: any = {
-            'Authorization': `Bearer ${token}`
-        };
-
+        const headers: any = { 'Authorization': `Bearer ${token}` };
         const options: RequestInit = { method, headers };
 
         if (body && !(body instanceof FormData)) {
@@ -521,17 +475,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
         try {
             const response = await fetch(`${API_BASE}${endpoint}`, options);
-
             if (response.status === 401) {
                 onLogout();
                 throw new Error('Session expired');
             }
-
             if (!response.ok) {
                 const error = await response.json();
                 throw new Error(error.detail || 'Request failed');
             }
-
             return response.json();
         } catch (error: any) {
             console.error('API Error:', error);
@@ -589,7 +540,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             formData.append('file', file);
             formData.append('num_peers', numPeers.toString());
 
-            // Create proper hyperparameters array with lr key (not learning_rate)
             const hyperparamsForBackend = hyperparameters.map(param => ({
                 lr: param.learning_rate,
                 batch_size: param.batch_size,
@@ -597,16 +547,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             }));
 
             formData.append('hyperparameters', JSON.stringify(hyperparamsForBackend));
-
-            console.log('Sending hyperparameters:', hyperparamsForBackend);
-
             const result = await apiCall('/sessions/start', 'POST', formData);
 
             if (result.session_uid) {
-                // Start monitoring the new session
                 setMonitoringSessionId(result.session_uid);
-
-                // Wait 1 second then fetch initial data
                 setTimeout(async () => {
                     await fetchFullResults(result.session_uid);
                 }, 1000);
@@ -649,7 +593,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }, [view]);
 
     useEffect(() => {
-        // Cleanup on unmount
         return () => {
             if (pollingInterval.current) {
                 clearInterval(pollingInterval.current);
@@ -658,19 +601,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }, []);
 
     const handleNumPeersChange = (newNum: number) => {
-        if (newNum < 1 || newNum > 10 || !Number.isInteger(newNum)) {
-            return;
-        }
-
+        if (newNum < 1 || newNum > 10 || !Number.isInteger(newNum)) return;
         setNumPeers(newNum);
-
         const newHyperparams = [];
         for (let i = 0; i < newNum; i++) {
-            newHyperparams.push({
-                learning_rate: 0.001,
-                batch_size: 32,
-                epochs: 10
-            });
+            newHyperparams.push({ learning_rate: 0.001, batch_size: 32, epochs: 10 });
         }
         setHyperparameters(newHyperparams);
     };
@@ -692,7 +627,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
         return (
             <div style={{ marginTop: '2rem' }}>
-                {/* Header with back button */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                     <h2 className="section-title">Training Progress</h2>
                     <button
@@ -707,39 +641,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                             fontWeight: '500',
                             transition: 'all 0.2s ease'
                         }}
-                        onMouseOver={(e) => {
-                            e.currentTarget.style.background = 'rgba(249,115,22,0.2)';
-                        }}
-                        onMouseOut={(e) => {
-                            e.currentTarget.style.background = 'rgba(249,115,22,0.1)';
-                        }}
+                        onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(249,115,22,0.2)'; }}
+                        onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(249,115,22,0.1)'; }}
                     >
                         ← Back to Sessions
                     </button>
                 </div>
 
-                {/* Neural Network Animation - Dynamic based on session data */}
-                <div className="card" style={{ marginBottom: '2rem', padding: '1rem', overflow: 'hidden' }}>
-                    <NeuralNetwork
-                        isTraining={isTraining}
-                        height={300}
-                        numPeers={peerEntries.length}
-                        epochs={peerEntries[0]?.[1]?.hyperparameters?.epochs || 10}
-                    />
-                </div>
+                {/* Neural Network Animation - Only show for Peer users */}
+                {isPeer && (
+                    <div className="card" style={{ marginBottom: '2rem', padding: '1rem', overflow: 'hidden' }}>
+                        <NeuralNetwork
+                            isTraining={isTraining}
+                            height={300}
+                            numPeers={peerEntries.length}
+                            epochs={peerEntries[0]?.[1]?.hyperparameters?.epochs || 10}
+                        />
+                    </div>
+                )}
 
-                {/* Session Info Card */}
                 <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                             <div className="session-id">Session ID: {resultsData.session_id}</div>
-                            <div className="session-info">
-                                <strong>Peers:</strong> {peerEntries.length}
-                            </div>
+                            <div className="session-info"><strong>Peers:</strong> {peerEntries.length}</div>
                         </div>
-                        <span className={`status-badge ${isTraining ? 'status-training' :
-                            resultsData.status === 'COMPLETED' ? 'status-online' : 'status-offline'
-                            }`}>
+                        <span className={`status-badge ${isTraining ? 'status-training' : resultsData.status === 'COMPLETED' ? 'status-online' : 'status-offline'}`}>
                             {resultsData.status}
                         </span>
                     </div>
@@ -748,15 +675,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 {!hasResults && isTraining && (
                     <div className="card" style={{ padding: '2rem', textAlign: 'center', marginBottom: '1.5rem' }}>
                         <div className="spinner" style={{ margin: '0 auto 1rem' }} />
-                        <p style={{ color: 'var(--muted)' }}>
-                            Training in progress... Waiting for epoch data from peers...
-                        </p>
+                        <p style={{ color: 'var(--muted)' }}>Training in progress... Waiting for epoch data from peers...</p>
                     </div>
                 )}
 
                 {hasResults && (
                     <>
-                        {/* Loss Chart with Gradient Fill */}
                         <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
                             <h3 style={{ marginBottom: '1rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <span style={{ color: '#f97316' }}>📉</span> Loss over Epochs
@@ -772,45 +696,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                         ))}
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                                    <XAxis
-                                        dataKey="epoch"
-                                        type="number"
-                                        domain={[1, 'dataMax']}
-                                        stroke="#9aa0a6"
-                                        label={{ value: 'Epoch', position: 'insideBottom', offset: -5, fill: '#9aa0a6' }}
-                                    />
-                                    <YAxis
-                                        stroke="#9aa0a6"
-                                        label={{ value: 'Loss', angle: -90, position: 'insideLeft', fill: '#9aa0a6' }}
-                                    />
-                                    <Tooltip
-                                        contentStyle={{
-                                            background: '#1a1a1a',
-                                            border: '1px solid rgba(249,115,22,0.2)',
-                                            borderRadius: '8px',
-                                            color: '#fff'
-                                        }}
-                                    />
+                                    <XAxis dataKey="epoch" type="number" domain={[1, 'dataMax']} stroke="#9aa0a6" label={{ value: 'Epoch', position: 'insideBottom', offset: -5, fill: '#9aa0a6' }} />
+                                    <YAxis stroke="#9aa0a6" label={{ value: 'Loss', angle: -90, position: 'insideLeft', fill: '#9aa0a6' }} />
+                                    <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid rgba(249,115,22,0.2)', borderRadius: '8px', color: '#fff' }} />
                                     <Legend />
                                     {peerEntries.map(([peerId, peer], idx) => (
                                         peer.epochs.length > 0 && (
-                                            <Area
-                                                key={peerId}
-                                                data={peer.epochs}
-                                                type="monotone"
-                                                dataKey="loss"
-                                                stroke={colors[idx % colors.length]}
-                                                fill={`url(#lossGradient-${idx})`}
-                                                name={`Peer ${idx + 1}`}
-                                                strokeWidth={2}
-                                            />
+                                            <Area key={peerId} data={peer.epochs} type="monotone" dataKey="loss" stroke={colors[idx % colors.length]} fill={`url(#lossGradient-${idx})`} name={`Peer ${idx + 1}`} strokeWidth={2} />
                                         )
                                     ))}
                                 </AreaChart>
                             </ResponsiveContainer>
                         </div>
 
-                        {/* Accuracy Chart with Gradient Fill */}
                         <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
                             <h3 style={{ marginBottom: '1rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <span style={{ color: '#10b981' }}>📈</span> Accuracy over Epochs
@@ -826,42 +724,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                         ))}
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                                    <XAxis
-                                        dataKey="epoch"
-                                        type="number"
-                                        domain={[1, 'dataMax']}
-                                        stroke="#9aa0a6"
-                                        label={{ value: 'Epoch', position: 'insideBottom', offset: -5, fill: '#9aa0a6' }}
-                                    />
-                                    <YAxis
-                                        stroke="#9aa0a6"
-                                        domain={[0, 1]}
-                                        label={{ value: 'Accuracy', angle: -90, position: 'insideLeft', fill: '#9aa0a6' }}
-                                    />
-                                    <Tooltip
-                                        contentStyle={{
-                                            background: '#1a1a1a',
-                                            border: '1px solid rgba(249,115,22,0.2)',
-                                            borderRadius: '8px',
-                                            color: '#fff'
-                                        }}
-                                        formatter={(value: number | undefined) =>
-                                            typeof value === 'number' ? `${(value * 100).toFixed(2)}%` : 'Accuracy'
-                                        }
-                                    />
+                                    <XAxis dataKey="epoch" type="number" domain={[1, 'dataMax']} stroke="#9aa0a6" label={{ value: 'Epoch', position: 'insideBottom', offset: -5, fill: '#9aa0a6' }} />
+                                    <YAxis stroke="#9aa0a6" domain={[0, 1]} label={{ value: 'Accuracy', angle: -90, position: 'insideLeft', fill: '#9aa0a6' }} />
+                                    <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid rgba(249,115,22,0.2)', borderRadius: '8px', color: '#fff' }} formatter={(value: number | undefined) => typeof value === 'number' ? `${(value * 100).toFixed(2)}%` : 'Accuracy'} />
                                     <Legend />
                                     {peerEntries.map(([peerId, peer], idx) => (
                                         peer.epochs.length > 0 && (
-                                            <Area
-                                                key={peerId}
-                                                data={peer.epochs}
-                                                type="monotone"
-                                                dataKey="accuracy"
-                                                stroke={colors[idx % colors.length]}
-                                                fill={`url(#accGradient-${idx})`}
-                                                name={`Peer ${idx + 1}`}
-                                                strokeWidth={2}
-                                            />
+                                            <Area key={peerId} data={peer.epochs} type="monotone" dataKey="accuracy" stroke={colors[idx % colors.length]} fill={`url(#accGradient-${idx})`} name={`Peer ${idx + 1}`} strokeWidth={2} />
                                         )
                                     ))}
                                 </AreaChart>
@@ -870,33 +739,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     </>
                 )}
 
-                {/* Peer Details with Enhanced Cards */}
                 <div className="section-title" style={{ marginBottom: '1rem' }}>Peer Details</div>
                 <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))' }}>
                     {peerEntries.map(([peerId, peer], idx) => (
-                        <PeerCard
-                            key={peerId}
-                            peerId={peerId}
-                            peer={peer}
-                            index={idx}
-                            color={colors[idx % colors.length]}
-                            status={resultsData.status}
-                        />
+                        <PeerCard key={peerId} peerId={peerId} peer={peer} index={idx} color={colors[idx % colors.length]} status={resultsData.status} />
                     ))}
                 </div>
             </div>
         );
     };
 
+    const isPeer = userRole === 'peer';
+    const isTrainer = userRole === 'trainer';
+
     return (
         <div className="page-root dashboard" ref={dashRef}>
-            {/* Header */}
             <div className="dash-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <div className="logo">
                         <div className="logo-inner">⚡</div>
                     </div>
                     <h1 className="dash-title">HYPERTUNE</h1>
+                    <span className="role-badge" style={{
+                        background: isPeer ? 'rgba(249, 115, 22, 0.2)' : 'rgba(139, 92, 246, 0.2)',
+                        color: isPeer ? '#f97316' : '#8b5cf6',
+                        padding: '0.25rem 0.75rem',
+                        borderRadius: '9999px',
+                        fontSize: '0.75rem',
+                        fontWeight: '600',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        border: `1px solid ${isPeer ? 'rgba(249, 115, 22, 0.3)' : 'rgba(139, 92, 246, 0.3)'}`
+                    }}>
+                        {userRole}
+                    </span>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
@@ -904,9 +780,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                         {isOnline ? 'ONLINE' : 'OFFLINE'}
                     </span>
                     <span style={{ color: 'var(--muted)' }}>{user?.username || user?.email}</span>
-                    <button onClick={onLogout} className="logout-btn">
-                        Logout
-                    </button>
+                    {onChangeRole && (
+                        <button
+                            onClick={onChangeRole}
+                            className="change-role-btn"
+                            style={{
+                                background: 'transparent',
+                                border: '1px solid rgba(255, 255, 255, 0.2)',
+                                color: '#9ca3af',
+                                padding: '0.5rem 1rem',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                fontSize: '0.875rem',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseOver={(e) => {
+                                e.currentTarget.style.borderColor = 'rgba(249, 115, 22, 0.5)';
+                                e.currentTarget.style.color = '#f97316';
+                            }}
+                            onMouseOut={(e) => {
+                                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                                e.currentTarget.style.color = '#9ca3af';
+                            }}
+                        >
+                            Change Role
+                        </button>
+                    )}
+                    <button onClick={onLogout} className="logout-btn">Logout</button>
                 </div>
             </div>
 
@@ -914,32 +814,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 renderTrainingGraphs()
             ) : (
                 <>
-                    {/* Network Status Card with Neural Network Animation */}
+                    {/* Network Status Card - Neural Network only for Peer users */}
                     <div className="card" style={{ marginBottom: '2rem', padding: '2rem' }}>
                         <h2 className="section-title">Network Status</h2>
 
-                        {/* Mini Neural Network Animation - Uses form state for preview */}
-                        <div style={{ marginBottom: '1.5rem' }}>
-                            <NeuralNetwork
-                                isTraining={isOnline}
-                                height={200}
-                                numPeers={numPeers}
-                                epochs={hyperparameters[0]?.epochs || 10}
-                            />
-                        </div>
+                        {/* Neural Network Animation - Only show for Peer users */}
+                        {isPeer && (
+                            <div style={{ marginBottom: '1.5rem' }}>
+                                <NeuralNetwork isTraining={isOnline} height={200} numPeers={numPeers} epochs={hyperparameters[0]?.epochs || 10} />
+                            </div>
+                        )}
 
                         <p style={{ color: 'var(--muted)', marginBottom: '1.5rem', textAlign: 'center' }}>
                             {isOnline
                                 ? 'You are connected to the distributed training network'
-                                : 'Join the network to contribute compute power'}
+                                : isPeer
+                                    ? 'Join the network to contribute compute power and earn credits'
+                                    : 'Join the network to start orchestrating training sessions'}
                         </p>
                         <div style={{ display: 'flex', justifyContent: 'center' }}>
-                            <button
-                                onClick={isOnline ? handleLeaveNetwork : handleJoinNetwork}
-                                disabled={loading}
-                                className="primary-btn"
-                                style={{ width: 'auto' }}
-                            >
+                            <button onClick={isOnline ? handleLeaveNetwork : handleJoinNetwork} disabled={loading} className="primary-btn" style={{ width: 'auto' }}>
                                 {loading ? <div className="spinner" /> : (isOnline ? 'Leave Network' : 'Join Network')}
                             </button>
                         </div>
@@ -947,147 +841,117 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
                     {error && <div className="error-msg">{error}</div>}
 
-                    {/* Tabs */}
                     <div className="tabs" style={{ marginBottom: '2rem' }}>
-                        <button
-                            className={`tab ${view === 'sessions' ? 'active' : ''}`}
-                            onClick={() => setView('sessions')}
-                        >
+                        <button className={`tab ${view === 'sessions' ? 'active' : ''}`} onClick={() => setView('sessions')}>
                             My Sessions
                             {view === 'sessions' && <div className="tab-underline" />}
                         </button>
-                        <button
-                            className={`tab ${view === 'create' ? 'active' : ''}`}
-                            onClick={() => setView('create')}
-                        >
-                            Create Session
-                            {view === 'create' && <div className="tab-underline" />}
-                        </button>
+                        {isTrainer && (
+                            <button className={`tab ${view === 'create' ? 'active' : ''}`} onClick={() => setView('create')}>
+                                Create Session
+                                {view === 'create' && <div className="tab-underline" />}
+                            </button>
+                        )}
                     </div>
 
-                    {/* Content */}
-                    {view === 'create' ? (
+                    {view === 'create' && isTrainer ? (
                         <div className="new-session-form">
                             <h2 className="section-title">Start Training Session</h2>
-
                             <div className="field">
                                 <label className="label">Number of Peers</label>
-                                <input
-                                    type="number"
-                                    value={numPeers}
-                                    onChange={(e) => {
-                                        const val = parseInt(e.target.value);
-                                        if (!isNaN(val)) {
-                                            handleNumPeersChange(val);
-                                        }
-                                    }}
-                                    min="1"
-                                    max="10"
-                                    className="input"
-                                />
+                                <input type="number" value={numPeers} onChange={(e) => { const val = parseInt(e.target.value); if (!isNaN(val)) handleNumPeersChange(val); }} min="1" max="10" className="input" />
                             </div>
-
                             <div className="field">
                                 <label className="label">Dataset (CSV)</label>
-                                <input
-                                    type="file"
-                                    accept=".csv"
-                                    onChange={(e) => setFile(e.target.files?.[0] || null)}
-                                    className="input file-input"
-                                />
+                                <input type="file" accept=".csv" onChange={(e) => setFile(e.target.files?.[0] || null)} className="input file-input" />
                             </div>
-
                             <div className="field">
                                 <label className="label">Hyperparameters per Peer</label>
                                 {hyperparameters.map((params, idx) => (
                                     <div key={idx} className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
                                         <h4 style={{ marginBottom: '0.75rem', color: colors[idx % colors.length], display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                            <span style={{
-                                                width: '10px',
-                                                height: '10px',
-                                                borderRadius: '50%',
-                                                backgroundColor: colors[idx % colors.length]
-                                            }} />
+                                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: colors[idx % colors.length] }} />
                                             Peer {idx + 1}
                                         </h4>
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
                                             <div className="field">
                                                 <label className="label">Learning Rate</label>
-                                                <input
-                                                    type="number"
-                                                    value={params.learning_rate}
-                                                    onChange={(e) => updateHyperparam(idx, 'learning_rate', parseFloat(e.target.value))}
-                                                    step="0.001"
-                                                    className="input"
-                                                />
+                                                <input type="number" value={params.learning_rate} onChange={(e) => updateHyperparam(idx, 'learning_rate', parseFloat(e.target.value))} step="0.001" className="input" />
                                             </div>
                                             <div className="field">
                                                 <label className="label">Batch Size</label>
-                                                <input
-                                                    type="number"
-                                                    value={params.batch_size}
-                                                    onChange={(e) => updateHyperparam(idx, 'batch_size', parseInt(e.target.value))}
-                                                    className="input"
-                                                />
+                                                <input type="number" value={params.batch_size} onChange={(e) => updateHyperparam(idx, 'batch_size', parseInt(e.target.value))} className="input" />
                                             </div>
                                             <div className="field">
                                                 <label className="label">Epochs</label>
-                                                <input
-                                                    type="number"
-                                                    value={params.epochs}
-                                                    onChange={(e) => updateHyperparam(idx, 'epochs', parseInt(e.target.value))}
-                                                    className="input"
-                                                />
+                                                <input type="number" value={params.epochs} onChange={(e) => updateHyperparam(idx, 'epochs', parseInt(e.target.value))} className="input" />
                                             </div>
                                         </div>
                                     </div>
                                 ))}
                             </div>
-
-                            <button
-                                onClick={handleStartSession}
-                                disabled={loading || !file}
-                                className="primary-btn"
-                            >
+                            <button onClick={handleStartSession} disabled={loading || !file} className="primary-btn">
                                 {loading ? <div className="spinner" /> : 'Start Training'}
                                 <div className="btn-overlay" />
                             </button>
                         </div>
                     ) : (
                         <div className="section">
-                            <h2 className="section-title">Your Training Sessions</h2>
+                            <h2 className="section-title">{isPeer ? 'Joined Sessions' : 'Your Training Sessions'}</h2>
+
+                            {isPeer && (
+                                <div className="card" style={{
+                                    padding: '1.5rem',
+                                    marginBottom: '1.5rem',
+                                    background: 'rgba(249, 115, 22, 0.05)',
+                                    border: '1px solid rgba(249, 115, 22, 0.2)'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                        <div style={{
+                                            width: '48px',
+                                            height: '48px',
+                                            borderRadius: '50%',
+                                            background: 'rgba(249, 115, 22, 0.2)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                        }}>
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="1.5">
+                                                <circle cx="12" cy="12" r="3" />
+                                                <path d="M12 1v4M12 19v4M1 12h4M19 12h4" />
+                                                <path d="M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <h3 style={{ color: '#f97316', marginBottom: '0.25rem', fontSize: '1rem' }}>Peer Mode Active</h3>
+                                            <p style={{ color: 'var(--muted)', fontSize: '0.875rem', margin: 0 }}>
+                                                You're contributing compute power to the network. Join sessions to participate in distributed training.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {ownedSessions.length === 0 && joinedSessions.length === 0 ? (
                                 <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
                                     <p style={{ color: 'var(--muted)' }}>
-                                        No sessions yet. Create your first training session!
+                                        {isPeer
+                                            ? 'No sessions joined yet. Wait for trainers to create sessions you can join.'
+                                            : 'No sessions yet. Create your first training session!'}
                                     </p>
                                 </div>
                             ) : (
                                 <>
-                                    {ownedSessions.length > 0 && (
+                                    {isTrainer && ownedSessions.length > 0 && (
                                         <>
-                                            <h3 style={{ fontSize: '1.2rem', marginBottom: '1rem', color: 'var(--accent)' }}>
-                                                Owned Sessions
-                                            </h3>
+                                            <h3 style={{ fontSize: '1.2rem', marginBottom: '1rem', color: 'var(--accent)' }}>Owned Sessions</h3>
                                             <div className="session-grid" style={{ marginBottom: '2rem' }}>
                                                 {ownedSessions.map((session) => (
-                                                    <div
-                                                        key={session._id}
-                                                        className="session-card"
-                                                        style={{ cursor: 'pointer' }}
-                                                        onClick={() => viewSessionDetails(session)}
-                                                    >
+                                                    <div key={session._id} className="session-card" style={{ cursor: 'pointer' }} onClick={() => viewSessionDetails(session)}>
                                                         <div className="session-id">ID: {session._id.slice(-8)}</div>
-                                                        <div className="session-info">
-                                                            <strong>Peers:</strong> {session.num_peers}
-                                                        </div>
-                                                        <div className="session-info">
-                                                            <strong>Created:</strong> {new Date(session.created_at).toLocaleString()}
-                                                        </div>
-                                                        <span className={`status-badge ${session.status === 'RUNNING' ? 'status-training' :
-                                                            session.status === 'COMPLETED' ? 'status-online' : 'status-offline'
-                                                            }`}>
+                                                        <div className="session-info"><strong>Peers:</strong> {session.num_peers}</div>
+                                                        <div className="session-info"><strong>Created:</strong> {new Date(session.created_at).toLocaleString()}</div>
+                                                        <span className={`status-badge ${session.status === 'RUNNING' ? 'status-training' : session.status === 'COMPLETED' ? 'status-online' : 'status-offline'}`}>
                                                             {session.status}
                                                         </span>
                                                     </div>
@@ -1099,26 +963,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                     {joinedSessions.length > 0 && (
                                         <>
                                             <h3 style={{ fontSize: '1.2rem', marginBottom: '1rem', color: 'var(--accent)' }}>
-                                                Joined Sessions
+                                                {isPeer ? 'Active Sessions' : 'Joined Sessions'}
                                             </h3>
                                             <div className="session-grid">
                                                 {joinedSessions.map((session) => (
-                                                    <div
-                                                        key={session._id}
-                                                        className="session-card"
-                                                        style={{ cursor: 'pointer' }}
-                                                        onClick={() => viewSessionDetails(session)}
-                                                    >
+                                                    <div key={session._id} className="session-card" style={{ cursor: 'pointer' }} onClick={() => viewSessionDetails(session)}>
                                                         <div className="session-id">ID: {session._id.slice(-8)}</div>
-                                                        <div className="session-info">
-                                                            <strong>Peers:</strong> {session.num_peers}
-                                                        </div>
-                                                        <div className="session-info">
-                                                            <strong>Created:</strong> {new Date(session.created_at).toLocaleString()}
-                                                        </div>
-                                                        <span className={`status-badge ${session.status === 'RUNNING' ? 'status-training' :
-                                                            session.status === 'COMPLETED' ? 'status-online' : 'status-offline'
-                                                            }`}>
+                                                        <div className="session-info"><strong>Peers:</strong> {session.num_peers}</div>
+                                                        <div className="session-info"><strong>Created:</strong> {new Date(session.created_at).toLocaleString()}</div>
+                                                        <span className={`status-badge ${session.status === 'RUNNING' ? 'status-training' : session.status === 'COMPLETED' ? 'status-online' : 'status-offline'}`}>
+                                                            {session.status}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {isPeer && ownedSessions.length > 0 && (
+                                        <>
+                                            <h3 style={{ fontSize: '1.2rem', marginBottom: '1rem', color: 'var(--accent)', marginTop: '2rem' }}>Previously Owned Sessions</h3>
+                                            <div className="session-grid">
+                                                {ownedSessions.map((session) => (
+                                                    <div key={session._id} className="session-card" style={{ cursor: 'pointer' }} onClick={() => viewSessionDetails(session)}>
+                                                        <div className="session-id">ID: {session._id.slice(-8)}</div>
+                                                        <div className="session-info"><strong>Peers:</strong> {session.num_peers}</div>
+                                                        <div className="session-info"><strong>Created:</strong> {new Date(session.created_at).toLocaleString()}</div>
+                                                        <span className={`status-badge ${session.status === 'RUNNING' ? 'status-training' : session.status === 'COMPLETED' ? 'status-online' : 'status-offline'}`}>
                                                             {session.status}
                                                         </span>
                                                     </div>

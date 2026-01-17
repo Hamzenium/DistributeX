@@ -209,21 +209,22 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                         and reclaim your compute sovereignty in the post-cloud era.
                     </p>
 
-                    {/* CTA Buttons */}
-                    <div className="cta-group">
+                    {/* CTA Button */}
+                    <div style={{ marginBottom: '64px', position: 'relative', zIndex: 20 }}>
                         <button
                             className="cta-btn cta-primary"
                             onClick={() => onNavigate('auth')}
-                            style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                justifyContent: 'center',
+                                fontSize: '16px',
+                                padding: '18px 48px'
+                            }}
                         >
-                            Join Waitlist
-                            <span style={{ fontSize: '14px' }}>→</span>
-                        </button>
-                        <button
-                            className="cta-btn cta-secondary"
-                            onClick={() => onNavigate('auth')}
-                        >
-                            Read Manifesto
+                            Let's Begin
+                            <span style={{ fontSize: '16px' }}>→</span>
                         </button>
                     </div>
 
@@ -438,6 +439,74 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                         </div>
                     </div>
                 </div>
+            </section>
+
+            {/* Bottom CTA Section */}
+            <section style={{
+                padding: '80px 20px',
+                position: 'relative',
+                background: 'rgba(10, 10, 10, 0.5)',
+                borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.05)'
+            }}>
+                <div style={{
+                    maxWidth: '1280px',
+                    margin: '0 auto',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    textAlign: 'center',
+                    position: 'relative',
+                    zIndex: 10
+                }}>
+                    <h2 style={{
+                        fontSize: 'clamp(32px, 5vw, 48px)',
+                        fontWeight: 700,
+                        color: 'white',
+                        marginBottom: '16px',
+                        lineHeight: 1.2
+                    }}>
+                        Ready to scale?
+                    </h2>
+                    <p style={{
+                        color: '#9ca3af',
+                        fontSize: '18px',
+                        maxWidth: '600px',
+                        marginBottom: '40px',
+                        fontWeight: 300
+                    }}>
+                        Join thousands of engineers building the future on HyperTune. The waitlist is moving fast.
+                    </p>
+
+                    <div className="cta-group">
+                        <button
+                            className="cta-btn cta-primary"
+                            style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}
+                        >
+                            Join Waitlist
+                            <span style={{ fontSize: '14px' }}>→</span>
+                        </button>
+                        <button
+                            className="cta-btn cta-secondary"
+                        >
+                            Read Manifesto
+                        </button>
+                    </div>
+                </div>
+
+                {/* Decorative Glow */}
+                <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: '600px',
+                    height: '600px',
+                    background: 'radial-gradient(circle, rgba(255, 85, 0, 0.1), transparent 70%)',
+                    filter: 'blur(80px)',
+                    pointerEvents: 'none',
+                    zIndex: 0
+                }}></div>
             </section>
 
             {/* Footer Glow */}
