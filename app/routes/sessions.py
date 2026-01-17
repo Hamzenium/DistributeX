@@ -468,22 +468,35 @@ async def send_command(
 
 @router.post("/leave")
 async def leave_session(user_id: str = Depends(get_current_user_id)):
+    mongo_id = ObjectId(user_id)
+
+    # ----------------------------
+    # Stop heartbeat worker
+    # ----------------------------
     worker = workers.get(HEARTBEAT_WORKER)
-    if not worker:
-        return {"message": "Not running"}
-
-    worker["control_queue"].put("STOP")
-    del workers[HEARTBEAT_WORKER]
+    if worker:
+        worker["control_queue"].put("STOP")
+        del workers[HEARTBEAT_WORKER]
 
     # ----------------------------
-    # Analytics: Leave Session
+    # Update user status → OFFLINE
     # ----------------------------
+    users_collection.update_one(
+        {"_id": mongo_id},
+        {
+            "$set": {
+                "status": "OFFLINE",
+                "last_online_at": datetime.utcnow()
+            }
+        }
+    )
+
     track_event(
         event_type="Leave_Session",
         user_id=user_id
     )
 
-    return {"message": "Worker stopped"}
+    return {"message": "User is now OFFLINE and worker stopped"}
 
 # ------------------------------------------------------------------
 # Check training status (user-scoped)
