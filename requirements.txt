@@ -19,3 +19,5 @@ python-multipart
 torch
 pandas
 requests
+amplitude-analytics
+google-generativeai==0.8.6

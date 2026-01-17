@@ -1,24 +1,71 @@
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Depends,
+    UploadFile,
+    File,
+    Form,
+    Request,
+)
 from datetime import datetime
 from bson import ObjectId
 from multiprocessing import Process, Queue
 import json
 import os
 import tempfile
-
+from amplitude import Amplitude, BaseEvent
 from app.database import users_collection, sessions_collection
 from app.utils.security import get_current_user_id
 from app.storage.s3 import s3
 from app.coordinator.coordinator import run_coordinator
 from app.workers.peer_worker import peer_worker
 from app.workers.registry import workers
-
+import requests
+import google.generativeai as genai
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 S3_BUCKET = os.getenv("S3_BUCKET_NAME")
-
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+model = genai.GenerativeModel("gemini-3-flash-preview")
 # Name of the heartbeat worker process
 HEARTBEAT_WORKER = "heartbeat-worker"
+
+
+AMPLITUDE_API_KEY = os.getenv("AMPLITUDE_API_KEY")
+AMPLITUDE_URL = "https://api2.amplitude.com/2/httpapi"
+print("AMPLITUDE_API_KEY:", AMPLITUDE_API_KEY)
+
+
+
+def track_event(
+    *,
+    event_type: str,
+    user_id: str,
+    session_id: str | None = None,
+    props: dict | None = None
+):
+    payload = {
+        "api_key": AMPLITUDE_API_KEY,
+        "events": [{
+            "user_id": str(user_id),
+            "event_type": event_type,
+            "event_properties": {
+                "session_id": session_id,
+                **(props or {})
+            }
+        }]
+    }
+
+    try:
+        response = requests.post(
+            AMPLITUDE_URL,
+            json=payload,
+            timeout=5
+        )
+        if response.status_code != 200:
+            print(f"Amplitude error: {response.status_code}, {response.text}")
+    except Exception as e:
+        print(f"Amplitude request failed: {e}")
 
 # ------------------------------------------------------------------
 # Helper: generate command queue name
@@ -74,7 +121,6 @@ def upload_and_start_coordinator(
             }
         },
     )
-
     # 3. Start coordinator (long-running)
     run_coordinator(session_id, coordinator_uid)
 
@@ -279,6 +325,14 @@ async def start_session(
 
     sessions_collection.insert_one(session_doc)
 
+    track_event(
+        event_type="Start_Session",
+        user_id=user_id,
+        session_id=str(session_id),
+        props={"num_peers": num_peers}
+    )
+
+
     # ----------------------------
     # Save uploaded file locally
     # ----------------------------
@@ -321,6 +375,13 @@ async def join_session(user_id: str = Depends(get_current_user_id)):
         mongo_id = ObjectId(user_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid user id")
+    
+    print(user_id)
+    track_event(
+        event_type="join_session",
+        user_id=user_id
+    )
+    print("ADDED AN EVENT BOI")
 
     user = users_collection.find_one({"_id": mongo_id})
     if not user:
@@ -407,21 +468,22 @@ async def send_command(
 
 @router.post("/leave")
 async def leave_session(user_id: str = Depends(get_current_user_id)):
-    """
-    Gracefully stop the worker (non-blocking).
-    """
-
     worker = workers.get(HEARTBEAT_WORKER)
     if not worker:
-        return {"message": "Heartbeat worker not running"}
+        return {"message": "Not running"}
 
     worker["control_queue"].put("STOP")
     del workers[HEARTBEAT_WORKER]
 
-    return {
-        "message": "Heartbeat worker shutdown initiated",
-        "process_uid": HEARTBEAT_WORKER,
-    }
+    # ----------------------------
+    # Analytics: Leave Session
+    # ----------------------------
+    track_event(
+        event_type="Leave_Session",
+        user_id=user_id
+    )
+
+    return {"message": "Worker stopped"}
 
 # ------------------------------------------------------------------
 # Check training status (user-scoped)
@@ -502,3 +564,45 @@ async def get_full_results(session_id: str, user_id: str = Depends(get_current_u
         "status": session.get("status"),
         "peers": full_results
     }
+
+@router.post("/explain")
+async def explain_hyperparameters(request: Request):
+    """
+    Takes a single hyperparameter JSON object and returns
+    a human-readable explanation from Gemini.
+    """
+
+    try:
+        hp = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    prompt = f"""
+You are an ML teaching assistant.
+
+Explain the following training hyperparameters in simple,
+clear language for a student.
+
+Hyperparameters:
+{hp}
+
+Explain:
+- What this configuration is trying to do
+- The trade-offs involved
+- When someone should use it
+
+Keep it short and beginner-friendly.
+"""
+
+    try:
+        response = model.generate_content(prompt)
+
+        return {
+            "explanation": response.text.strip()
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Gemini API error: {str(e)}"
+        )
