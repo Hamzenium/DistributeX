@@ -45,3 +45,4 @@ db = mongo_client[MONGO_DB]
 # ------------------------------------------------------------------
 users_collection = db["users"]
 sessions_collection = db["sessions"]
+activity_logs_collection = db["activity_logs"]

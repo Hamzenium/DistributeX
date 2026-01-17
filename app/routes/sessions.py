@@ -16,6 +16,7 @@ import tempfile
 from amplitude import Amplitude, BaseEvent
 from app.database import users_collection, sessions_collection
 from app.utils.security import get_current_user_id
+from app.utils.activity_logger import log_activity
 from app.storage.s3 import s3
 from app.coordinator.coordinator import run_coordinator
 from app.workers.peer_worker import peer_worker
@@ -322,6 +323,13 @@ async def start_session(
             "$addToSet": {"owned_sessions": session_id},
         },
     )
+    log_activity(
+    user_id=user_id,
+    action="START_SESSION",
+    session_id=str(session_id),
+    metadata={"num_peers": num_peers}
+    )
+
 
     # ----------------------------
     # Insert session document
@@ -393,11 +401,11 @@ async def join_session(user_id: str = Depends(get_current_user_id)):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid user id")
     
-    print(user_id)
-    track_event(
-        event_type="join_session",
-        user_id=user_id
+    log_activity(
+        user_id=user_id,
+        action="JOIN"
     )
+
     print("ADDED AN EVENT BOI")
 
     user = users_collection.find_one({"_id": mongo_id})
@@ -508,10 +516,10 @@ async def leave_session(user_id: str = Depends(get_current_user_id)):
         }
     )
 
-    track_event(
-        event_type="Leave_Session",
-        user_id=user_id
-    )
+    log_activity(
+    user_id=user_id,
+    action="LEAVE")
+
 
     return {"message": "User is now OFFLINE and worker stopped"}
 

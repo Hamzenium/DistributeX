@@ -8,6 +8,7 @@ from app.utils.security import (
     verify_password,
     create_access_token,
 )
+from app.utils.activity_logger import log_activity
 from app.utils.system_specs import get_system_specs
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -47,6 +48,14 @@ def signin(data: SigninRequest):
 
     if not user or not verify_password(data.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    log_activity(
+        user_id=str(user["_id"]),
+        action="user_signed_in",
+        metadata={
+            "email": user["email"]
+        }
+    )
 
     token = create_access_token(
         {
