@@ -18,7 +18,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuth, onNavigate }) => {
     useEffect(() => {
         if (cardRef.current) {
             gsap.from(cardRef.current, {
-                opacity: 0,
+                opacity: 10,
                 scale: 0.9,
                 y: 30,
                 duration: 0.6,

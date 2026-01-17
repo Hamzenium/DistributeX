@@ -4,6 +4,7 @@
   --muted: #9aa0a6;
   --accent: #f97316;
   --card-border: rgba(249, 115, 22, 0.2);
+  --grid-line: rgba(255, 255, 255, 0.04);
 }
 
 * {
@@ -20,21 +21,55 @@ body,
 }
 
 body {
-  background: #0a0a0a;
+  background: var(--bg-900);
   color: #e6eef8;
   font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
 }
 
 .page-root {
-
   position: relative;
+  min-height: 100vh;
   overflow-x: hidden;
   background:
-    linear-gradient(135deg, #0a0a0a 0%, #1a1410 50%, #1a0f0a 100%),
-    linear-gradient(#1a1a1a 1px, transparent 1px),
-    linear-gradient(90deg, #1a1a1a 1px, transparent 1px);
-  background-size: auto, 40px 40px, 40px 40px;
+    /* GRID — top layer */
+    linear-gradient(#111 1px, transparent 1px),
+    linear-gradient(90deg, #111 1px, transparent 1px),
+    /* VIGNETTE — bottom layer */
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.02), #050505 70%);
+  background-size:
+    40px 40px,
+    40px 40px,
+    cover;
   background-position: center, center, center;
+}
+
+.page-root::before,
+.page-root::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(160px);
+  opacity: 0.18;
+  mix-blend-mode: screen;
+  z-index: 0;
+}
+
+.page-root::before {
+  width: 700px;
+  height: 700px;
+  background: #ea580c;
+  top: -30%;
+  right: -25%;
+}
+
+.page-root::after {
+  width: 500px;
+  height: 500px;
+  background: #c2410c;
+  bottom: -25%;
+  left: -20%;
+  opacity: 0.12;
 }
 
 /* ============================================================================
@@ -578,4 +613,11 @@ body {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* fix for dark overlay */
+*,
+*::before,
+*::after {
+  opacity: 1 !important;
 }

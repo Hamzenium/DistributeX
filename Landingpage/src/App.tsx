@@ -4,6 +4,7 @@ import { AuthPage } from './Components/auth';
 import { Dashboard } from './Components/Dashboard';
 import './App.css';
 
+
 const getToken = () => localStorage.getItem('token');
 
 const isAuthenticated = () => {

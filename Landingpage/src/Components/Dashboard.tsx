@@ -2,12 +2,284 @@ import React, { useState, useEffect, useRef } from 'react';
 import { gsap } from 'gsap';
 import { useGSAP } from "@gsap/react";
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from 'recharts';
 
 gsap.registerPlugin(useGSAP, ScrollTrigger);
 
 const API_BASE = 'http://localhost:8000';
 
+// ============================================
+// Neural Network Animation Component
+// ============================================
+interface NeuralNetworkProps {
+    isTraining: boolean;
+    height?: number;
+    numPeers?: number;      // Number of peers determines number of layers
+    epochs?: number;        // Epochs shown in the labels
+}
+
+const NeuralNetwork: React.FC<NeuralNetworkProps> = ({
+    isTraining,
+    height = 400,
+    numPeers = 4,
+    epochs = 10
+}) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const animationRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        // Dynamic network configuration based on numPeers
+        // Creates layers: Input -> Hidden layers (based on peers) -> Output
+        const generateLayers = () => {
+            const layers = [];
+            const numLayers = Math.max(2, Math.min(numPeers + 2, 8)); // Min 2, Max 8 layers
+
+            // Calculate neuron counts (decreasing from input to output)
+            const maxNeurons = 8;
+            const minNeurons = 2;
+
+            for (let i = 0; i < numLayers; i++) {
+                const progress = i / (numLayers - 1);
+                const neurons = Math.round(maxNeurons - (maxNeurons - minNeurons) * progress);
+
+                // Size represents the actual layer size in the network
+                let size;
+                if (i === 0) size = 784;  // Input layer (e.g., MNIST)
+                else if (i === numLayers - 1) size = 10;  // Output layer
+                else size = Math.round(128 / (i * 0.5 + 1));  // Hidden layers
+
+                layers.push({
+                    neurons,
+                    label: `P${i + 1}`,  // P1, P2, P3... for Peer layers
+                    size,
+                    epoch: Math.round((epochs / numLayers) * (i + 1))  // Distribute epochs across layers
+                });
+            }
+            return layers;
+        };
+
+        const layers = generateLayers();
+
+        const padding = 60;
+        const layerSpacing = (canvas.width - padding * 2) / (layers.length - 1);
+
+        // Animation state
+        let pulsePhase = 0;
+        let connectionPulses: Array<{
+            from: number;
+            to: number;
+            fromNeuron: number;
+            toNeuron: number;
+            progress: number;
+            speed: number;
+        }> = [];
+
+        // Calculate neuron positions
+        const neuronPositions = layers.map((layer, layerIdx) => {
+            const x = padding + layerIdx * layerSpacing;
+            const neuronSpacing = (canvas.height - padding * 2) / (layer.neurons - 1);
+
+            return Array.from({ length: layer.neurons }, (_, neuronIdx) => ({
+                x,
+                y: padding + neuronIdx * neuronSpacing,
+                active: false,
+                activation: 0
+            }));
+        });
+
+        // Create initial connection pulses
+        const createPulse = () => {
+            if (!isTraining) return;
+
+            const fromLayer = Math.floor(Math.random() * (layers.length - 1));
+            const toLayer = fromLayer + 1;
+            const fromNeuron = Math.floor(Math.random() * layers[fromLayer].neurons);
+            const toNeuron = Math.floor(Math.random() * layers[toLayer].neurons);
+
+            connectionPulses.push({
+                from: fromLayer,
+                to: toLayer,
+                fromNeuron,
+                toNeuron,
+                progress: 0,
+                speed: 0.02 + Math.random() * 0.03
+            });
+        };
+
+        const animate = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            pulsePhase += 0.02;
+
+            // Update and filter pulses
+            connectionPulses = connectionPulses.filter(pulse => {
+                pulse.progress += pulse.speed;
+                return pulse.progress <= 1;
+            });
+
+            // Create new pulses randomly
+            if (isTraining && Math.random() < 0.3) {
+                createPulse();
+            }
+
+            // Draw connections
+            layers.forEach((layer, layerIdx) => {
+                if (layerIdx < layers.length - 1) {
+                    neuronPositions[layerIdx].forEach((fromPos, fromIdx) => {
+                        neuronPositions[layerIdx + 1].forEach((toPos, toIdx) => {
+                            // Base connection
+                            ctx.strokeStyle = 'rgba(249, 115, 22, 0.1)';
+                            ctx.lineWidth = 1;
+                            ctx.beginPath();
+                            ctx.moveTo(fromPos.x, fromPos.y);
+                            ctx.lineTo(toPos.x, toPos.y);
+                            ctx.stroke();
+
+                            // Draw active pulses
+                            const activePulses = connectionPulses.filter(
+                                p => p.from === layerIdx && p.to === layerIdx + 1 &&
+                                    p.fromNeuron === fromIdx && p.toNeuron === toIdx
+                            );
+
+                            activePulses.forEach(pulse => {
+                                const x = fromPos.x + (toPos.x - fromPos.x) * pulse.progress;
+                                const y = fromPos.y + (toPos.y - fromPos.y) * pulse.progress;
+
+                                // Glowing pulse
+                                const gradient = ctx.createRadialGradient(x, y, 0, x, y, 15);
+                                gradient.addColorStop(0, 'rgba(249, 115, 22, 0.8)');
+                                gradient.addColorStop(0.5, 'rgba(249, 115, 22, 0.4)');
+                                gradient.addColorStop(1, 'rgba(249, 115, 22, 0)');
+
+                                ctx.fillStyle = gradient;
+                                ctx.beginPath();
+                                ctx.arc(x, y, 15, 0, Math.PI * 2);
+                                ctx.fill();
+                            });
+                        });
+                    });
+                }
+            });
+
+            // Draw neurons
+            neuronPositions.forEach((layerNeurons, layerIdx) => {
+                layerNeurons.forEach((pos, neuronIdx) => {
+                    const isActive = connectionPulses.some(
+                        p => (p.from === layerIdx && p.fromNeuron === neuronIdx) ||
+                            (p.to === layerIdx && p.toNeuron === neuronIdx)
+                    );
+
+                    // Neuron glow when training
+                    if (isTraining) {
+                        const glowIntensity = isActive ? 0.6 : 0.2 + Math.sin(pulsePhase + neuronIdx) * 0.1;
+                        const glowRadius = isActive ? 12 : 8;
+
+                        const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, glowRadius);
+                        gradient.addColorStop(0, `rgba(249, 115, 22, ${glowIntensity})`);
+                        gradient.addColorStop(1, 'rgba(249, 115, 22, 0)');
+
+                        ctx.fillStyle = gradient;
+                        ctx.beginPath();
+                        ctx.arc(pos.x, pos.y, glowRadius, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    // Neuron circle
+                    ctx.fillStyle = isActive && isTraining ? '#f97316' : 'rgba(249, 115, 22, 0.3)';
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    if (isActive && isTraining) {
+                        ctx.strokeStyle = 'rgba(249, 115, 22, 0.8)';
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    }
+                });
+
+                // Layer labels
+                const layer = layers[layerIdx];
+                const firstNeuron = layerNeurons[0];
+
+                ctx.fillStyle = '#9aa0a6';
+                ctx.font = '14px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(layer.label, firstNeuron.x, canvas.height - 25);
+                ctx.font = '11px monospace';
+                ctx.fillStyle = '#6b7280';
+                ctx.fillText(`E${layer.epoch}`, firstNeuron.x, canvas.height - 10);
+            });
+
+            animationRef.current = requestAnimationFrame(animate);
+        };
+
+        animate();
+
+        return () => {
+            if (animationRef.current) {
+                cancelAnimationFrame(animationRef.current);
+            }
+        };
+    }, [isTraining, numPeers, epochs]);
+
+    return (
+        <div style={{
+            position: 'relative',
+            width: '100%',
+            height: `${height}px`,
+            background: isTraining
+                ? 'radial-gradient(ellipse at center, rgba(249, 115, 22, 0.05) 0%, transparent 70%)'
+                : 'transparent',
+            borderRadius: '12px',
+            overflow: 'hidden',
+            transition: 'background 0.5s ease'
+        }}>
+            <canvas
+                ref={canvasRef}
+                width={1200}
+                height={height}
+                style={{
+                    width: '100%',
+                    height: '100%',
+                    display: 'block'
+                }}
+            />
+            <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                fontSize: height > 250 ? '48px' : '24px',
+                fontWeight: '700',
+                color: isTraining ? '#f97316' : 'rgba(249, 115, 22, 0.3)',
+                textShadow: isTraining ? '0 0 20px rgba(249, 115, 22, 0.5)' : 'none',
+                letterSpacing: '0.1em',
+                fontFamily: 'monospace',
+                transition: 'all 0.5s ease',
+                pointerEvents: 'none',
+                animation: isTraining ? 'pulse 2s ease-in-out infinite' : 'none'
+            }}>
+                {isTraining ? '[TRAINING]' : '[READY]'}
+            </div>
+            <style>{`
+                @keyframes pulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.7; }
+                }
+            `}</style>
+        </div>
+    );
+};
+
+// ============================================
+// Dashboard Interfaces
+// ============================================
 interface DashboardProps {
     user: { email: string; username: string } | null;
     onLogout: () => void;
@@ -58,6 +330,128 @@ interface FullResultsResponse {
     peers: Record<string, PeerData>;
 }
 
+// ============================================
+// Enhanced Peer Card Component with Charts
+// ============================================
+interface PeerCardProps {
+    peerId: string;
+    peer: PeerData;
+    index: number;
+    color: string;
+    status: string;
+}
+
+const PeerCard: React.FC<PeerCardProps> = ({ peerId, peer, index, color, status }) => {
+    const latestEpoch = peer.epochs[peer.epochs.length - 1];
+    const lr = peer.hyperparameters.lr || peer.hyperparameters.learning_rate || 0;
+
+    return (
+        <div className="card" style={{ padding: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h4 style={{ color: color, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{
+                        width: '12px',
+                        height: '12px',
+                        borderRadius: '50%',
+                        backgroundColor: color,
+                        boxShadow: `0 0 10px ${color}40`
+                    }} />
+                    Peer {index + 1}
+                </h4>
+                <span className={`status-badge ${peer.epochs.length > 0 ? 'status-training' : 'status-offline'}`}>
+                    {peer.epochs.length > 0 ? 'TRAINING' : 'WAITING'}
+                </span>
+            </div>
+
+            <div className="session-id" style={{ marginBottom: '0.5rem', fontSize: '0.75rem' }}>
+                UID: {peerId}
+            </div>
+
+            <div style={{
+                background: 'rgba(249,115,22,0.05)',
+                padding: '0.75rem',
+                borderRadius: '8px',
+                marginBottom: '1rem',
+                border: '1px solid rgba(249,115,22,0.1)'
+            }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--muted)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                    <span>LR: <strong style={{ color: '#fff' }}>{lr}</strong></span>
+                    <span>Batch: <strong style={{ color: '#fff' }}>{peer.hyperparameters.batch_size}</strong></span>
+                    <span>Epochs: <strong style={{ color: '#fff' }}>{peer.hyperparameters.epochs}</strong></span>
+                </div>
+            </div>
+
+            {peer.epochs.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                    {/* Mini Loss Chart */}
+                    <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '0.75rem' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginBottom: '0.5rem' }}>Loss</div>
+                        <ResponsiveContainer width="100%" height={80}>
+                            <AreaChart data={peer.epochs}>
+                                <defs>
+                                    <linearGradient id={`lossGrad-${index}`} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor={color} stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <Area
+                                    type="monotone"
+                                    dataKey="loss"
+                                    stroke={color}
+                                    fill={`url(#lossGrad-${index})`}
+                                    strokeWidth={2}
+                                />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                        <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#fff' }}>
+                            {latestEpoch?.loss.toFixed(4)}
+                        </div>
+                    </div>
+
+                    {/* Mini Accuracy Chart */}
+                    <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '0.75rem' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginBottom: '0.5rem' }}>Accuracy</div>
+                        <ResponsiveContainer width="100%" height={80}>
+                            <AreaChart data={peer.epochs}>
+                                <defs>
+                                    <linearGradient id={`accGrad-${index}`} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <Area
+                                    type="monotone"
+                                    dataKey="accuracy"
+                                    stroke="#10b981"
+                                    fill={`url(#accGrad-${index})`}
+                                    strokeWidth={2}
+                                />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                        <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#10b981' }}>
+                            {latestEpoch ? `${(latestEpoch.accuracy * 100).toFixed(1)}%` : '--'}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {!latestEpoch && (
+                <div style={{ color: 'var(--muted)', fontSize: '0.9rem', textAlign: 'center', padding: '1rem' }}>
+                    {status === 'RUNNING' ? (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                            <div className="spinner" style={{ width: '16px', height: '16px' }} />
+                            Waiting for training data...
+                        </div>
+                    ) : 'No training data'}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ============================================
+// Main Dashboard Component
+// ============================================
 export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const [view, setView] = useState<'create' | 'sessions'>('sessions');
     const [ownedSessions, setOwnedSessions] = useState<Session[]>([]);
@@ -85,7 +479,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     useEffect(() => {
         if (dashRef.current) {
             gsap.from(dashRef.current, {
-                opacity: 0,
+                opacity: 10,
                 y: 20,
                 duration: 0.6,
                 ease: 'power3.out'
@@ -294,9 +688,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
         const peerEntries = Object.entries(resultsData.peers);
         const hasResults = peerEntries.some(([_, peer]) => peer.epochs.length > 0);
+        const isTraining = resultsData.status === 'RUNNING';
 
         return (
             <div style={{ marginTop: '2rem' }}>
+                {/* Header with back button */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                     <h2 className="section-title">Training Progress</h2>
                     <button
@@ -308,11 +704,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                             borderRadius: '8px',
                             color: '#f97316',
                             cursor: 'pointer',
-                            fontWeight: '500'
+                            fontWeight: '500',
+                            transition: 'all 0.2s ease'
+                        }}
+                        onMouseOver={(e) => {
+                            e.currentTarget.style.background = 'rgba(249,115,22,0.2)';
+                        }}
+                        onMouseOut={(e) => {
+                            e.currentTarget.style.background = 'rgba(249,115,22,0.1)';
                         }}
                     >
                         ← Back to Sessions
                     </button>
+                </div>
+
+                {/* Neural Network Animation - Dynamic based on session data */}
+                <div className="card" style={{ marginBottom: '2rem', padding: '1rem', overflow: 'hidden' }}>
+                    <NeuralNetwork
+                        isTraining={isTraining}
+                        height={300}
+                        numPeers={peerEntries.length}
+                        epochs={peerEntries[0]?.[1]?.hyperparameters?.epochs || 10}
+                    />
                 </div>
 
                 {/* Session Info Card */}
@@ -324,7 +737,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                 <strong>Peers:</strong> {peerEntries.length}
                             </div>
                         </div>
-                        <span className={`status-badge ${resultsData.status === 'RUNNING' ? 'status-training' :
+                        <span className={`status-badge ${isTraining ? 'status-training' :
                             resultsData.status === 'COMPLETED' ? 'status-online' : 'status-offline'
                             }`}>
                             {resultsData.status}
@@ -332,7 +745,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     </div>
                 </div>
 
-                {!hasResults && resultsData.status === 'RUNNING' && (
+                {!hasResults && isTraining && (
                     <div className="card" style={{ padding: '2rem', textAlign: 'center', marginBottom: '1.5rem' }}>
                         <div className="spinner" style={{ margin: '0 auto 1rem' }} />
                         <p style={{ color: 'var(--muted)' }}>
@@ -343,11 +756,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
                 {hasResults && (
                     <>
-                        {/* Loss Chart */}
+                        {/* Loss Chart with Gradient Fill */}
                         <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-                            <h3 style={{ marginBottom: '1rem', color: '#fff' }}>Loss over Epochs</h3>
+                            <h3 style={{ marginBottom: '1rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ color: '#f97316' }}>📉</span> Loss over Epochs
+                            </h3>
                             <ResponsiveContainer width="100%" height={300}>
-                                <LineChart>
+                                <AreaChart>
+                                    <defs>
+                                        {peerEntries.map(([peerId], idx) => (
+                                            <linearGradient key={`lossGradient-${idx}`} id={`lossGradient-${idx}`} x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor={colors[idx % colors.length]} stopOpacity={0.3} />
+                                                <stop offset="95%" stopColor={colors[idx % colors.length]} stopOpacity={0} />
+                                            </linearGradient>
+                                        ))}
+                                    </defs>
                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                                     <XAxis
                                         dataKey="epoch"
@@ -371,28 +794,37 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                     <Legend />
                                     {peerEntries.map(([peerId, peer], idx) => (
                                         peer.epochs.length > 0 && (
-                                            <Line
+                                            <Area
                                                 key={peerId}
                                                 data={peer.epochs}
                                                 type="monotone"
                                                 dataKey="loss"
                                                 stroke={colors[idx % colors.length]}
+                                                fill={`url(#lossGradient-${idx})`}
                                                 name={`Peer ${idx + 1}`}
                                                 strokeWidth={2}
-                                                dot={{ r: 3 }}
-                                                activeDot={{ r: 5 }}
                                             />
                                         )
                                     ))}
-                                </LineChart>
+                                </AreaChart>
                             </ResponsiveContainer>
                         </div>
 
-                        {/* Accuracy Chart */}
+                        {/* Accuracy Chart with Gradient Fill */}
                         <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-                            <h3 style={{ marginBottom: '1rem', color: '#fff' }}>Accuracy over Epochs</h3>
+                            <h3 style={{ marginBottom: '1rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ color: '#10b981' }}>📈</span> Accuracy over Epochs
+                            </h3>
                             <ResponsiveContainer width="100%" height={300}>
-                                <LineChart>
+                                <AreaChart>
+                                    <defs>
+                                        {peerEntries.map(([peerId], idx) => (
+                                            <linearGradient key={`accGradient-${idx}`} id={`accGradient-${idx}`} x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor={colors[idx % colors.length]} stopOpacity={0.3} />
+                                                <stop offset="95%" stopColor={colors[idx % colors.length]} stopOpacity={0} />
+                                            </linearGradient>
+                                        ))}
+                                    </defs>
                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                                     <XAxis
                                         dataKey="epoch"
@@ -413,89 +845,44 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                             borderRadius: '8px',
                                             color: '#fff'
                                         }}
+                                        formatter={(value: number | undefined) =>
+                                            typeof value === 'number' ? `${(value * 100).toFixed(2)}%` : 'Accuracy'
+                                        }
                                     />
                                     <Legend />
                                     {peerEntries.map(([peerId, peer], idx) => (
                                         peer.epochs.length > 0 && (
-                                            <Line
+                                            <Area
                                                 key={peerId}
                                                 data={peer.epochs}
                                                 type="monotone"
                                                 dataKey="accuracy"
                                                 stroke={colors[idx % colors.length]}
+                                                fill={`url(#accGradient-${idx})`}
                                                 name={`Peer ${idx + 1}`}
                                                 strokeWidth={2}
-                                                dot={{ r: 3 }}
-                                                activeDot={{ r: 5 }}
                                             />
                                         )
                                     ))}
-                                </LineChart>
+                                </AreaChart>
                             </ResponsiveContainer>
                         </div>
                     </>
                 )}
 
-                {/* Peer Details */}
+                {/* Peer Details with Enhanced Cards */}
                 <div className="section-title" style={{ marginBottom: '1rem' }}>Peer Details</div>
-                <div style={{ display: 'grid', gap: '1rem' }}>
-                    {peerEntries.map(([peerId, peer], idx) => {
-                        const latestEpoch = peer.epochs[peer.epochs.length - 1];
-                        const lr = peer.hyperparameters.lr || peer.hyperparameters.learning_rate || 0;
-
-                        return (
-                            <div key={peerId} className="card" style={{ padding: '1.5rem' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                                    <h4 style={{ color: colors[idx % colors.length], margin: 0 }}>
-                                        Peer {idx + 1}
-                                    </h4>
-                                    <span className={`status-badge ${peer.epochs.length > 0 ? 'status-training' : 'status-offline'}`}>
-                                        {peer.epochs.length > 0 ? 'TRAINING' : 'WAITING'}
-                                    </span>
-                                </div>
-                                <div className="session-id" style={{ marginBottom: '0.5rem' }}>
-                                    UID: {peerId}
-                                </div>
-                                <div style={{
-                                    background: 'rgba(249,115,22,0.05)',
-                                    padding: '0.75rem',
-                                    borderRadius: '8px',
-                                    marginBottom: '1rem'
-                                }}>
-                                    <div style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
-                                        LR: {lr} •
-                                        Batch: {peer.hyperparameters.batch_size} •
-                                        Epochs: {peer.hyperparameters.epochs}
-                                    </div>
-                                </div>
-                                {latestEpoch ? (
-                                    <div>
-                                        <div style={{ fontSize: '0.9rem', color: 'var(--muted)', marginBottom: '0.5rem' }}>
-                                            Latest Results (Epoch {latestEpoch.epoch}):
-                                        </div>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                            <div>
-                                                <div style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Loss</div>
-                                                <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#fff' }}>
-                                                    {latestEpoch.loss.toFixed(4)}
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Accuracy</div>
-                                                <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#fff' }}>
-                                                    {(latestEpoch.accuracy * 100).toFixed(2)}%
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>
-                                        {resultsData.status === 'RUNNING' ? 'Waiting for training data...' : 'No training data'}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
+                <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))' }}>
+                    {peerEntries.map(([peerId, peer], idx) => (
+                        <PeerCard
+                            key={peerId}
+                            peerId={peerId}
+                            peer={peer}
+                            index={idx}
+                            color={colors[idx % colors.length]}
+                            status={resultsData.status}
+                        />
+                    ))}
                 </div>
             </div>
         );
@@ -527,22 +914,35 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 renderTrainingGraphs()
             ) : (
                 <>
-                    {/* Network Status Card */}
+                    {/* Network Status Card with Neural Network Animation */}
                     <div className="card" style={{ marginBottom: '2rem', padding: '2rem' }}>
                         <h2 className="section-title">Network Status</h2>
-                        <p style={{ color: 'var(--muted)', marginBottom: '1.5rem' }}>
+
+                        {/* Mini Neural Network Animation - Uses form state for preview */}
+                        <div style={{ marginBottom: '1.5rem' }}>
+                            <NeuralNetwork
+                                isTraining={isOnline}
+                                height={200}
+                                numPeers={numPeers}
+                                epochs={hyperparameters[0]?.epochs || 10}
+                            />
+                        </div>
+
+                        <p style={{ color: 'var(--muted)', marginBottom: '1.5rem', textAlign: 'center' }}>
                             {isOnline
                                 ? 'You are connected to the distributed training network'
                                 : 'Join the network to contribute compute power'}
                         </p>
-                        <button
-                            onClick={isOnline ? handleLeaveNetwork : handleJoinNetwork}
-                            disabled={loading}
-                            className="primary-btn"
-                            style={{ width: 'auto' }}
-                        >
-                            {loading ? <div className="spinner" /> : (isOnline ? 'Leave Network' : 'Join Network')}
-                        </button>
+                        <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <button
+                                onClick={isOnline ? handleLeaveNetwork : handleJoinNetwork}
+                                disabled={loading}
+                                className="primary-btn"
+                                style={{ width: 'auto' }}
+                            >
+                                {loading ? <div className="spinner" /> : (isOnline ? 'Leave Network' : 'Join Network')}
+                            </button>
+                        </div>
                     </div>
 
                     {error && <div className="error-msg">{error}</div>}
@@ -601,7 +1001,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                 <label className="label">Hyperparameters per Peer</label>
                                 {hyperparameters.map((params, idx) => (
                                     <div key={idx} className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
-                                        <h4 style={{ marginBottom: '0.75rem', color: 'var(--accent)' }}>Peer {idx + 1}</h4>
+                                        <h4 style={{ marginBottom: '0.75rem', color: colors[idx % colors.length], display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                            <span style={{
+                                                width: '10px',
+                                                height: '10px',
+                                                borderRadius: '50%',
+                                                backgroundColor: colors[idx % colors.length]
+                                            }} />
+                                            Peer {idx + 1}
+                                        </h4>
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
                                             <div className="field">
                                                 <label className="label">Learning Rate</label>
