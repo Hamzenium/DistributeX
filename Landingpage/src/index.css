@@ -5,6 +5,7 @@
   --accent: #f97316;
   --card-border: rgba(249, 115, 22, 0.2);
   --grid-line: rgba(255, 255, 255, 0.04);
+  --grid-line: rgba(255, 255, 255, 0.04);
 }
 
 * {
@@ -21,6 +22,7 @@ body,
 }
 
 body {
+  background: var(--bg-900);
   background: var(--bg-900);
   color: #e6eef8;
   font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
