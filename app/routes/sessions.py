@@ -37,7 +37,6 @@ AMPLITUDE_URL = "https://api2.amplitude.com/2/httpapi"
 print("AMPLITUDE_API_KEY:", AMPLITUDE_API_KEY)
 
 
-
 def track_event(
     *,
     event_type: str,
@@ -75,6 +74,7 @@ def track_event(
 
     except Exception as e:
         print("Amplitude request failed:", e)
+
 
 @router.get("/amplitude-test")
 async def amplitude_test():
@@ -232,6 +232,7 @@ async def get_session_details(
 # Start session endpoint
 # ------------------------------------------------------------------
 
+
 @router.post("/start")
 async def start_session(
     num_peers: int = Form(...),
@@ -324,12 +325,11 @@ async def start_session(
         },
     )
     log_activity(
-    user_id=user_id,
-    action="START_SESSION",
-    session_id=str(session_id),
-    metadata={"num_peers": num_peers}
+        user_id=user_id,
+        action="START_SESSION",
+        session_id=str(session_id),
+        metadata={"num_peers": num_peers}
     )
-
 
     # ----------------------------
     # Insert session document
@@ -356,7 +356,6 @@ async def start_session(
         session_id=str(session_id),
         props={"num_peers": num_peers}
     )
-
 
     # ----------------------------
     # Save uploaded file locally
@@ -400,7 +399,7 @@ async def join_session(user_id: str = Depends(get_current_user_id)):
         mongo_id = ObjectId(user_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid user id")
-    
+
     log_activity(
         user_id=user_id,
         action="JOIN"
@@ -517,9 +516,8 @@ async def leave_session(user_id: str = Depends(get_current_user_id)):
     )
 
     log_activity(
-    user_id=user_id,
-    action="LEAVE")
-
+        user_id=user_id,
+        action="LEAVE")
 
     return {"message": "User is now OFFLINE and worker stopped"}
 
@@ -562,6 +560,8 @@ async def get_training_status(user_id: str = Depends(get_current_user_id)):
 # ------------------------------------------------------------------
 # GET: Session results with hyperparameters for plotting
 # ------------------------------------------------------------------
+
+
 @router.get("/{session_id}/full-results")
 async def get_full_results(session_id: str, user_id: str = Depends(get_current_user_id)):
     """
@@ -574,7 +574,8 @@ async def get_full_results(session_id: str, user_id: str = Depends(get_current_u
         session_oid = ObjectId(session_id)
         user_oid = ObjectId(user_id)
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid session or user ID")
+        raise HTTPException(
+            status_code=400, detail="Invalid session or user ID")
 
     # Fetch session
     session = sessions_collection.find_one({"_id": session_oid})
@@ -586,7 +587,8 @@ async def get_full_results(session_id: str, user_id: str = Depends(get_current_u
     peer_ids = [peer.get("uid") for peer in session.get("peers", [])]
 
     if str(user_oid) != owner_id and str(user_oid) not in peer_ids:
-        raise HTTPException(status_code=403, detail="Not authorized to view this session")
+        raise HTTPException(
+            status_code=403, detail="Not authorized to view this session")
 
     # Build nested results per peer
     full_results = {}
@@ -602,6 +604,7 @@ async def get_full_results(session_id: str, user_id: str = Depends(get_current_u
         "status": session.get("status"),
         "peers": full_results
     }
+
 
 @router.post("/explain")
 async def explain_hyperparameters(request: Request):
@@ -644,7 +647,8 @@ Keep it short and beginner-friendly.
             status_code=500,
             detail=f"Gemini API error: {str(e)}"
         )
-    
+
+
 @router.get("/peers/online")
 async def get_online_peers(user_id: str = Depends(get_current_user_id)):
     """
@@ -664,3 +668,76 @@ async def get_online_peers(user_id: str = Depends(get_current_user_id)):
     return {
         "online_peers": online_count
     }
+
+
+def make_json_safe(obj):
+    if isinstance(obj, dict):
+        return {k: make_json_safe(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [make_json_safe(v) for v in obj]
+    elif isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, ObjectId):
+        return str(obj)
+    else:
+        return obj
+
+
+@router.post("/{session_id}/explain-results")
+async def explain_session_results(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    try:
+        session_oid = ObjectId(session_id)
+        user_oid = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    session = sessions_collection.find_one({"_id": session_oid})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    owner_id = session.get("owner_user_id")
+    peer_ids = [peer.get("uid") for peer in session.get("peers", [])]
+
+    if str(user_oid) != owner_id and str(user_oid) not in peer_ids:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    full_results = {
+        "session_id": str(session["_id"]),
+        "num_peers": session.get("num_peers"),
+        "status": session.get("status"),
+        "peers": [
+            {
+                "peer_id": peer.get("uid"),
+                "hyperparameters": peer.get("hyperparameters", {}),
+                "results": peer.get("results", [])
+            }
+            for peer in session.get("peers", [])
+        ],
+    }
+
+    # 🔑 THIS IS THE FIX
+    safe_results = make_json_safe(full_results)
+
+    prompt = f"""
+You are a senior machine learning teaching assistant.
+
+Below are COMPLETE training results from a distributed ML session.
+Each peer trained the SAME model using DIFFERENT hyperparameters.
+
+Session Results:
+{json.dumps(safe_results, indent=2)}
+
+Explain clearly:
+- Which peer performed best and why
+- Whether the models are underfitting or overfitting
+- Convergence behavior
+- Which hyperparameters mattered most
+- Whether further tuning is worth it
+"""
+
+    response = model.generate_content(prompt)
+
+    return {"analysis": response.text.strip()}
