@@ -1,4 +1,4 @@
-// TrainingGraphs.tsx - Aggregated training graphs and peer details
+// TimeGraphs.tsx - Training graphs with real-time Recharts visualization
 
 import React from 'react';
 import {
@@ -34,36 +34,73 @@ export const TrainingGraphs: React.FC<TrainingGraphsProps> = ({
     const isTraining = resultsData.status === 'RUNNING';
     const isPeer = userRole === 'peer';
 
+    // Count online/training peers
+    const onlinePeers = peerEntries.filter(([_, peer]) => peer.epochs.length > 0 || isTraining).length;
+    const totalPeers = peerEntries.length;
+
     return (
         <div style={{ marginTop: '2rem' }}>
             <div style={{
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                marginBottom: '1rem'
+                marginBottom: '1rem',
+                flexWrap: 'wrap',
+                gap: '1rem'
             }}>
-                <h2 className="section-title">Training Progress</h2>
-                <button
-                    onClick={onBack}
-                    style={{
+                <h2 className="section-title" style={{ margin: 0 }}>Training Progress</h2>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    {/* Online Peers Counter */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75rem',
                         padding: '0.5rem 1rem',
-                        background: 'rgba(249,115,22,0.1)',
-                        border: '1px solid rgba(249,115,22,0.3)',
-                        borderRadius: '8px',
-                        color: '#f97316',
-                        cursor: 'pointer',
-                        fontWeight: '500',
-                        transition: 'all 0.2s ease'
-                    }}
-                    onMouseOver={(e) => {
-                        e.currentTarget.style.background = 'rgba(249,115,22,0.2)';
-                    }}
-                    onMouseOut={(e) => {
-                        e.currentTarget.style.background = 'rgba(249,115,22,0.1)';
-                    }}
-                >
-                    ← Back to Sessions
-                </button>
+                        background: 'rgba(34, 197, 94, 0.1)',
+                        border: '1px solid rgba(34, 197, 94, 0.2)',
+                        borderRadius: '8px'
+                    }}>
+                        <div style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            background: '#22c55e',
+                            boxShadow: '0 0 8px #22c55e',
+                            animation: isTraining ? 'pulse 2s ease-in-out infinite' : 'none'
+                        }} />
+                        <span style={{
+                            fontSize: '12px',
+                            fontFamily: 'monospace',
+                            color: '#22c55e',
+                            fontWeight: '700'
+                        }}>
+                            {onlinePeers}/{totalPeers} Peers Online
+                        </span>
+                    </div>
+
+                    <button
+                        onClick={onBack}
+                        style={{
+                            padding: '0.5rem 1rem',
+                            background: 'rgba(249,115,22,0.1)',
+                            border: '1px solid rgba(249,115,22,0.3)',
+                            borderRadius: '8px',
+                            color: '#f97316',
+                            cursor: 'pointer',
+                            fontWeight: '500',
+                            transition: 'all 0.2s ease'
+                        }}
+                        onMouseOver={(e) => {
+                            e.currentTarget.style.background = 'rgba(249,115,22,0.2)';
+                        }}
+                        onMouseOut={(e) => {
+                            e.currentTarget.style.background = 'rgba(249,115,22,0.1)';
+                        }}
+                    >
+                        ← Back to Sessions
+                    </button>
+                </div>
             </div>
 
             {/* Neural Network Animation - Only for Peer users */}
@@ -341,6 +378,13 @@ export const TrainingGraphs: React.FC<TrainingGraphsProps> = ({
                     )
                 ))}
             </div>
+
+            <style>{`
+                @keyframes pulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.5; }
+                }
+            `}</style>
         </div>
     );
 };

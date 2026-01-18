@@ -1,4 +1,5 @@
-// TrainerCard.tsx - Trainer/Coordinator view card with detailed metrics
+// TrainerCard.tsx - Trainer/Coordinator view card with heartbeat and hyperparameters
+
 import React from 'react';
 import type { PeerData } from './types';
 
@@ -86,6 +87,7 @@ export const TrainerCard: React.FC<TrainerCardProps> = ({
                         gap: '0.75rem',
                         marginBottom: '0.5rem'
                     }}>
+                        {/* Heartbeat Icon */}
                         <div style={{
                             width: '12px',
                             height: '12px',
@@ -95,10 +97,10 @@ export const TrainerCard: React.FC<TrainerCardProps> = ({
                                 : isTraining
                                     ? '#22c55e'
                                     : '#6b7280',
-                            boxShadow: isSyncing || isTraining
+                            boxShadow: (isSyncing || isTraining)
                                 ? `0 0 8px ${isSyncing ? '#eab308' : '#22c55e'}`
                                 : 'none',
-                            animation: (isSyncing || isTraining) ? 'pulse 2s ease-in-out infinite' : 'none'
+                            animation: (isSyncing || isTraining) ? 'heartbeat 1.5s ease-in-out infinite' : 'none'
                         }} />
                         <h3 style={{
                             fontSize: '1.125rem',
@@ -225,15 +227,9 @@ export const TrainerCard: React.FC<TrainerCardProps> = ({
                 </div>
             </div>
 
-            {/* Progress Info */}
-            {!isSyncing && (
-                <div style={{
-                    background: 'rgba(255, 255, 255, 0.03)',
-                    border: '1px solid rgba(255, 255, 255, 0.05)',
-                    borderRadius: '8px',
-                    padding: '1rem',
-                    marginBottom: '1rem'
-                }}>
+            {/* Training Progress */}
+            {hasData && !isSyncing && (
+                <div style={{ marginBottom: '1rem' }}>
                     <div style={{
                         display: 'flex',
                         justifyContent: 'space-between',
@@ -310,11 +306,12 @@ export const TrainerCard: React.FC<TrainerCardProps> = ({
                 </div>
             )}
 
-            {/* Detailed Stats Grid */}
+            {/* Hyperparameters Grid - Epochs, Batch Size, Learning Rate */}
             <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: '0.75rem'
+                gap: '0.75rem',
+                marginBottom: '1rem'
             }}>
                 <div style={{
                     background: 'rgba(255, 255, 255, 0.03)',
@@ -337,7 +334,7 @@ export const TrainerCard: React.FC<TrainerCardProps> = ({
                         fontWeight: '700',
                         color: '#fff'
                     }}>
-                        {peer.epochs.length}
+                        {peer.hyperparameters?.epochs || '—'}
                     </div>
                 </div>
 
@@ -395,7 +392,6 @@ export const TrainerCard: React.FC<TrainerCardProps> = ({
             {/* Performance Indicator */}
             {hasData && improvement !== 0 && (
                 <div style={{
-                    marginTop: '1rem',
                     padding: '0.75rem',
                     background: improvement > 0
                         ? 'rgba(34, 197, 94, 0.05)'
@@ -434,6 +430,28 @@ export const TrainerCard: React.FC<TrainerCardProps> = ({
                 @keyframes spin {
                     from { transform: rotate(0deg); }
                     to { transform: rotate(360deg); }
+                }
+                @keyframes heartbeat {
+                    0%, 100% { 
+                        transform: scale(1);
+                        opacity: 1;
+                    }
+                    14% { 
+                        transform: scale(1.3);
+                        opacity: 0.8;
+                    }
+                    28% { 
+                        transform: scale(1);
+                        opacity: 1;
+                    }
+                    42% { 
+                        transform: scale(1.3);
+                        opacity: 0.8;
+                    }
+                    56% { 
+                        transform: scale(1);
+                        opacity: 1;
+                    }
                 }
             `}</style>
         </div>

@@ -1,4 +1,4 @@
-// Dashboard.tsx - Updated with PeerCard and TrainerCard imports
+// src/Components/Dashboard.tsx - Updated with peer node navigation
 
 import React, { useState, useEffect, useRef } from 'react';
 import { gsap } from 'gsap';
@@ -13,11 +13,7 @@ import { sessionAPI } from './apiService';
 import { NeuralNetwork } from './Neuralnetwork';
 import { SessionForm } from '../SessionForm';
 import { SessionList } from '../SessionList';
-//import { TrainingGraphs } from './TimeGraphs';
-import { PeerCard } from '../Components/Peer/PeerCard';
-import { PeerDashboard } from '../Components/Peer/Peerdashboard';
-
-import { TrainerCard } from './TrainerCard';
+import { TrainingGraphs } from './TimeGraphs';
 
 gsap.registerPlugin(useGSAP, ScrollTrigger);
 
@@ -196,20 +192,6 @@ export const Dashboard: React.FC<ExtendedDashboardProps> = ({
         fetchSessions();
     };
 
-    // Color palette for peer cards
-    const colors = ['#f97316', '#06b6d4', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899'];
-
-    if (isPeer) {
-        return (
-            <PeerDashboard
-                user={user}
-                onLogout={onLogout}
-                userRole={userRole}
-                onChangeRole={onChangeRole}
-            />
-        );
-    }
-
     return (
         <div className="page-root dashboard" ref={dashRef}>
             {/* Header */}
@@ -273,130 +255,13 @@ export const Dashboard: React.FC<ExtendedDashboardProps> = ({
                 </div>
             </div>
 
-            {/* Training Graphs View with Role-Based Cards */}
+            {/* Training Graphs View */}
             {monitoringSessionId && resultsData ? (
-                <div style={{ marginTop: '2rem' }}>
-                    <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: '1rem'
-                    }}>
-                        <h2 className="section-title">Training Progress</h2>
-                        <button
-                            onClick={backToSessions}
-                            style={{
-                                padding: '0.5rem 1rem',
-                                background: 'rgba(249,115,22,0.1)',
-                                border: '1px solid rgba(249,115,22,0.3)',
-                                borderRadius: '8px',
-                                color: '#f97316',
-                                cursor: 'pointer',
-                                fontWeight: '500',
-                                transition: 'all 0.2s ease'
-                            }}
-                            onMouseOver={(e) => {
-                                e.currentTarget.style.background = 'rgba(249,115,22,0.2)';
-                            }}
-                            onMouseOut={(e) => {
-                                e.currentTarget.style.background = 'rgba(249,115,22,0.1)';
-                            }}
-                        >
-                            ← Back to Sessions
-                        </button>
-                    </div>
-
-                    {/* Neural Network Animation - Only for Peer users */}
-                    {isPeer && (
-                        <div className="card" style={{
-                            marginBottom: '2rem',
-                            padding: '1rem',
-                            overflow: 'hidden'
-                        }}>
-                            <NeuralNetwork
-                                isTraining={resultsData.status === 'RUNNING'}
-                                height={300}
-                                numPeers={Object.keys(resultsData.peers).length}
-                                epochs={Object.values(resultsData.peers)[0]?.hyperparameters?.epochs || 10}
-                            />
-                        </div>
-                    )}
-
-                    {/* Session Info */}
-                    <div className="card" style={{
-                        padding: '1.5rem',
-                        marginBottom: '1.5rem'
-                    }}>
-                        <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center'
-                        }}>
-                            <div>
-                                <div className="session-id">
-                                    Session ID: {resultsData.session_id}
-                                </div>
-                                <div className="session-info">
-                                    <strong>Peers:</strong> {Object.keys(resultsData.peers).length}
-                                </div>
-                            </div>
-                            <span className={`status-badge ${resultsData.status === 'RUNNING'
-                                ? 'status-training'
-                                : resultsData.status === 'COMPLETED'
-                                    ? 'status-online'
-                                    : 'status-offline'
-                                }`}>
-                                {resultsData.status}
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Loading State */}
-                    {!Object.values(resultsData.peers).some(peer => peer.epochs.length > 0) && resultsData.status === 'RUNNING' && (
-                        <div className="card" style={{
-                            padding: '2rem',
-                            textAlign: 'center',
-                            marginBottom: '1.5rem'
-                        }}>
-                            <div className="spinner" style={{ margin: '0 auto 1rem' }} />
-                            <p style={{ color: 'var(--muted)' }}>
-                                Training in progress... Waiting for epoch data from peers...
-                            </p>
-                        </div>
-                    )}
-
-                    {/* Peer Details - Role-Based Card Rendering */}
-                    <div className="section-title" style={{ marginBottom: '1rem' }}>
-                        {isPeer ? 'Peer Node Details' : 'Peer Monitor Dashboard'}
-                    </div>
-                    <div style={{
-                        display: 'grid',
-                        gap: '1rem',
-                        gridTemplateColumns: isPeer ? 'repeat(auto-fit, minmax(350px, 1fr))' : 'repeat(auto-fit, minmax(400px, 1fr))'
-                    }}>
-                        {Object.entries(resultsData.peers).map(([peerId, peer], idx) => (
-                            isPeer ? (
-                                <PeerCard
-                                    key={peerId}
-                                    peerId={peerId}
-                                    peer={peer}
-                                    index={idx}
-                                    color={colors[idx % colors.length]}
-                                    status={resultsData.status}
-                                />
-                            ) : (
-                                <TrainerCard
-                                    key={peerId}
-                                    peerId={peerId}
-                                    peer={peer}
-                                    index={idx}
-                                    color={colors[idx % colors.length]}
-                                    status={resultsData.status}
-                                />
-                            )
-                        ))}
-                    </div>
-                </div>
+                <TrainingGraphs
+                    resultsData={resultsData}
+                    userRole={userRole}
+                    onBack={backToSessions}
+                />
             ) : (
                 <>
                     {/* Network Status Card */}
