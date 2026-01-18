@@ -4,6 +4,7 @@ interface LandingPageProps {
     onNavigate: (view: 'landing' | 'auth' | 'dashboard') => void;
 }
 
+
 export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
     const heroRef = useRef<HTMLDivElement>(null);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -206,7 +207,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                     {/* Hero Subtitle */}
                     <p className="hero-subtitle" style={{ textAlign: 'center' }}>
                         The world's most advanced distributed ML clinic. Train faster, scale infinitely,
-                        and reclaim your compute sovereignty in the post-cloud era.
+                        and turn everyday devices into real AI infrastructure.
                     </p>
 
                     {/* CTA Button */}

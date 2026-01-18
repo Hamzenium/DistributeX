@@ -196,7 +196,7 @@ export const RoleSelection: React.FC<RoleSelectionProps> = ({ onRoleSelect, onLo
                     {/* Network Status Footer */}
                     <div className="network-status">
                         <p>
-                            Current Network Status: <span className="status-online">● ONLINE</span> (8,421 Active Nodes)
+                            Current Network Status: <span className="status-online">● OFFLINE</span>
                         </p>
                     </div>
                 </div>

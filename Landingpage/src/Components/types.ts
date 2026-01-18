@@ -1,67 +1,62 @@
-// src/types.ts
+// types.ts - Centralized type definitions
+
+export type UserRole = 'peer' | 'trainer';
 
 export interface User {
-    id: string;
+    email: string;
     username: string;
-    email?: string;
+}
+
+export interface TrainingResult {
+    epoch: number;
+    loss: number;
+    accuracy: number;
+}
+
+export interface Peer {
+    uid: string;
+    status: string;
+    results: TrainingResult[];
+    hyperparameters?: HyperParameters;
 }
 
 export interface Session {
     _id: string;
-    status: 'idle' | 'running' | 'completed' | 'failed';
+    owner_user_id: string;
     num_peers: number;
+    status: string;
     created_at: string;
-    updated_at?: string;
-    model_type?: string;
-    dataset?: string;
+    peers: Peer[];
 }
 
-export interface EpochData {
+export interface EpochResult {
     epoch: number;
     loss: number;
     accuracy: number;
-    val_loss?: number;
-    val_accuracy?: number;
-    timestamp?: string;
+    timestamp: string;
 }
 
-export interface Hyperparameters {
-    epochs: number;
-    batch_size: number;
+export interface HyperParameters {
     lr?: number;
     learning_rate?: number;
-    optimizer?: string;
+    batch_size: number;
+    epochs: number;
 }
 
 export interface PeerData {
-    peer_id: string;
-    status: 'active' | 'idle' | 'disconnected';
-    epochs: EpochData[];
-    hyperparameters: Hyperparameters;
-    current_epoch?: number;
-    total_epochs?: number;
-    device?: string;
-    last_updated?: string;
+    hyperparameters: HyperParameters;
+    epochs: EpochResult[];
 }
 
 export interface FullResultsResponse {
     session_id: string;
     status: string;
-    peers: {
-        [peerId: string]: PeerData;
-    };
-    global_metrics?: {
-        avg_loss: number;
-        avg_accuracy: number;
-        total_epochs_completed: number;
-    };
-    created_at?: string;
-    updated_at?: string;
+    peers: Record<string, PeerData>;
 }
 
-export interface ApiResponse<T> {
-    success: boolean;
-    data?: T;
-    error?: string;
-    message?: string;
+export interface DashboardProps {
+    user: User | null;
+    onLogout: () => void;
+    userRole: UserRole | null;
+    onChangeRole?: () => void;
 }
