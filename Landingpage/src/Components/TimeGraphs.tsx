@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import type { FullResultsResponse, UserRole } from './types';
 import { NeuralNetwork } from './Neuralnetwork';
-import { PeerDashboard } from '../Components/Peer/Peerdashboard';
+import { PeerCard } from '../Components/Peer/PeerCard';
 import { TrainerCard } from './TrainerCard';
 
 interface TrainingGraphsProps {
