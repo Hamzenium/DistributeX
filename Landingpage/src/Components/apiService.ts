@@ -1,5 +1,4 @@
 // apiService.ts - Centralized API calls
-
 const API_BASE = 'http://localhost:8000';
 
 const getToken = () => localStorage.getItem('token');
@@ -27,7 +26,7 @@ export const apiCall = async (
     }
 
     if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({ detail: 'Request failed' }));
         throw new Error(error.detail || 'Request failed');
     }
 
@@ -40,10 +39,15 @@ export const sessionAPI = {
     fetchFullResults: (sessionId: string) =>
         apiCall(`/sessions/${sessionId}/full-results`, 'GET'),
 
+    analyzeResults: (sessionId: string) =>
+        apiCall(`/sessions/${sessionId}/explain-results`, 'POST'),
+
     joinNetwork: () => apiCall('/sessions/join', 'POST'),
 
     leaveNetwork: () => apiCall('/sessions/leave', 'POST'),
 
     startSession: (formData: FormData) =>
         apiCall('/sessions/start', 'POST', formData),
+
+    getOnlinePeers: () => apiCall('/sessions/peers/online', 'GET'),
 };

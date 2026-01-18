@@ -1,6 +1,6 @@
-// TimeGraphs.tsx - Training graphs with real-time Recharts visualization
+// TimeGraphs.tsx - Training graphs with AI analysis navigation
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
     ResponsiveContainer,
     AreaChart,
@@ -15,6 +15,8 @@ import type { FullResultsResponse, UserRole } from './types';
 import { NeuralNetwork } from './Neuralnetwork';
 import { PeerCard } from '../Components/Peer/PeerCard';
 import { TrainerCard } from './TrainerCard';
+import { AnalysisPage } from './TextAnalysis/AnalysisPage';
+import { sessionAPI } from './apiService';
 
 interface TrainingGraphsProps {
     resultsData: FullResultsResponse;
@@ -29,6 +31,11 @@ export const TrainingGraphs: React.FC<TrainingGraphsProps> = ({
     userRole,
     onBack
 }) => {
+    const [analysis, setAnalysis] = useState<string | null>(null);
+    const [showAnalysisPage, setShowAnalysisPage] = useState(false);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [analysisError, setAnalysisError] = useState<string | null>(null);
+
     const peerEntries = Object.entries(resultsData.peers);
     const hasResults = peerEntries.some(([_, peer]) => peer.epochs.length > 0);
     const isTraining = resultsData.status === 'RUNNING';
@@ -37,6 +44,37 @@ export const TrainingGraphs: React.FC<TrainingGraphsProps> = ({
     // Count online/training peers
     const onlinePeers = peerEntries.filter(([_, peer]) => peer.epochs.length > 0 || isTraining).length;
     const totalPeers = peerEntries.length;
+
+    const handleAnalyze = async () => {
+        setIsAnalyzing(true);
+        setAnalysisError(null);
+
+        try {
+            const result = await sessionAPI.analyzeResults(resultsData.session_id);
+            setAnalysis(result.analysis);
+            setShowAnalysisPage(true);
+        } catch (error: any) {
+            setAnalysisError(error.message || 'Failed to analyze results');
+            console.error('Analysis error:', error);
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
+
+    const handleBackFromAnalysis = () => {
+        setShowAnalysisPage(false);
+    };
+
+    // Show analysis page if user clicked analyze
+    if (showAnalysisPage && analysis) {
+        return (
+            <AnalysisPage
+                analysis={analysis}
+                sessionId={resultsData.session_id}
+                onBack={handleBackFromAnalysis}
+            />
+        );
+    }
 
     return (
         <div style={{ marginTop: '2rem' }}>
@@ -180,7 +218,7 @@ export const TrainingGraphs: React.FC<TrainingGraphsProps> = ({
                             <span style={{ color: '#f97316' }}>📉</span> Loss over Epochs
                         </h3>
                         <ResponsiveContainer width="100%" height={300}>
-                            <AreaChart>
+                            <AreaChart margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                                 <defs>
                                     {peerEntries.map(([peerId], idx) => (
                                         <linearGradient
@@ -209,6 +247,7 @@ export const TrainingGraphs: React.FC<TrainingGraphsProps> = ({
                                     dataKey="epoch"
                                     type="number"
                                     domain={[1, 'dataMax']}
+                                    allowDecimals={false}
                                     stroke="#9aa0a6"
                                     label={{
                                         value: 'Epoch',
@@ -246,6 +285,7 @@ export const TrainingGraphs: React.FC<TrainingGraphsProps> = ({
                                             fill={`url(#lossGradient-${idx})`}
                                             name={`Peer ${idx + 1}`}
                                             strokeWidth={2}
+                                            connectNulls
                                         />
                                     )
                                 ))}
@@ -268,7 +308,7 @@ export const TrainingGraphs: React.FC<TrainingGraphsProps> = ({
                             <span style={{ color: '#10b981' }}>📈</span> Accuracy over Epochs
                         </h3>
                         <ResponsiveContainer width="100%" height={300}>
-                            <AreaChart>
+                            <AreaChart margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                                 <defs>
                                     {peerEntries.map(([peerId], idx) => (
                                         <linearGradient
@@ -297,6 +337,7 @@ export const TrainingGraphs: React.FC<TrainingGraphsProps> = ({
                                     dataKey="epoch"
                                     type="number"
                                     domain={[1, 'dataMax']}
+                                    allowDecimals={false}
                                     stroke="#9aa0a6"
                                     label={{
                                         value: 'Epoch',
@@ -338,6 +379,7 @@ export const TrainingGraphs: React.FC<TrainingGraphsProps> = ({
                                             fill={`url(#accGradient-${idx})`}
                                             name={`Peer ${idx + 1}`}
                                             strokeWidth={2}
+                                            connectNulls
                                         />
                                     )
                                 ))}
@@ -354,7 +396,11 @@ export const TrainingGraphs: React.FC<TrainingGraphsProps> = ({
             <div style={{
                 display: 'grid',
                 gap: '1rem',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))'
+                gridTemplateColumns: peerEntries.length === 1
+                    ? '1fr'
+                    : 'repeat(auto-fit, minmax(350px, 1fr))',
+                maxWidth: peerEntries.length === 1 ? '600px' : '100%',
+                marginBottom: '2rem'
             }}>
                 {peerEntries.map(([peerId, peer], idx) => (
                     isPeer ? (
@@ -378,6 +424,79 @@ export const TrainingGraphs: React.FC<TrainingGraphsProps> = ({
                     )
                 ))}
             </div>
+
+            {/* AI Analysis Button */}
+            {hasResults && (
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    marginTop: '3rem',
+                    marginBottom: '2rem'
+                }}>
+                    <button
+                        onClick={handleAnalyze}
+                        disabled={isAnalyzing}
+                        style={{
+                            padding: '1rem 2rem',
+                            background: isAnalyzing
+                                ? 'rgba(139, 92, 246, 0.3)'
+                                : 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                            border: 'none',
+                            borderRadius: '12px',
+                            color: '#fff',
+                            fontSize: '1rem',
+                            fontWeight: '600',
+                            cursor: isAnalyzing ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)',
+                            transition: 'all 0.3s ease',
+                            opacity: isAnalyzing ? 0.7 : 1
+                        }}
+                        onMouseOver={(e) => {
+                            if (!isAnalyzing) {
+                                e.currentTarget.style.transform = 'translateY(-2px)';
+                                e.currentTarget.style.boxShadow = '0 6px 16px rgba(139, 92, 246, 0.4)';
+                            }
+                        }}
+                        onMouseOut={(e) => {
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.3)';
+                        }}
+                    >
+                        {isAnalyzing ? (
+                            <>
+                                <div className="spinner" style={{
+                                    width: '20px',
+                                    height: '20px',
+                                    borderWidth: '2px'
+                                }} />
+                                <span>Analyzing Results...</span>
+                            </>
+                        ) : (
+                            <>
+                                <span style={{ fontSize: '1.25rem' }}>🤖</span>
+                                <span>Analyze Results with AI</span>
+                            </>
+                        )}
+                    </button>
+                </div>
+            )}
+
+            {analysisError && (
+                <div className="card" style={{
+                    padding: '1.5rem',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    marginTop: '1rem',
+                    textAlign: 'center'
+                }}>
+                    <p style={{ color: '#ef4444', margin: 0 }}>
+                        ⚠️ {analysisError}
+                    </p>
+                </div>
+            )}
 
             <style>{`
                 @keyframes pulse {

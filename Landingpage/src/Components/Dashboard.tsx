@@ -1,4 +1,3 @@
-// src/Components/Dashboard.tsx - Updated with peer node navigation
 
 import React, { useState, useEffect, useRef } from 'react';
 import { gsap } from 'gsap';
@@ -198,7 +197,7 @@ export const Dashboard: React.FC<ExtendedDashboardProps> = ({
             <div className="dash-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <div className="logo">
-                        <div className="logo-inner">⚡</div>
+                        <div className="logo-inner">âš¡</div>
                     </div>
                     <h1 className="dash-title">HYPERTUNE</h1>
                     <span className="role-badge" style={{
