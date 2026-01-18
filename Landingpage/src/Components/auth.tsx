@@ -117,7 +117,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuth, onNavigate }) => {
                     <div className="logo">
                         <div className="logo-inner">⚡</div>
                     </div>
-                    <h1 className="brand">HYPERTUNE</h1>
+                    <h1 className="brand">Decentrify</h1>
                     <p className="subtitle">Distributed ML Training</p>
                 </div>
 

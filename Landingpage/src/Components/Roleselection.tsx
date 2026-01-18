@@ -46,7 +46,7 @@ export const RoleSelection: React.FC<RoleSelectionProps> = ({ onRoleSelect, onLo
                 <div className="nav-content">
                     <div className="nav-brand">
                         <span className="bolt-icon">⚡</span>
-                        <span className="brand-text">HYPERTUNE</span>
+                        <span className="brand-text">Decentrify</span>
                     </div>
                     <div className="nav-right">
                         <div className="connection-status">

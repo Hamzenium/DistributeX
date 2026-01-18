@@ -199,7 +199,7 @@ export const Dashboard: React.FC<ExtendedDashboardProps> = ({
                     <div className="logo">
                         <div className="logo-inner">âš¡</div>
                     </div>
-                    <h1 className="dash-title">HYPERTUNE</h1>
+                    <h1 className="dash-title">Decentrify</h1>
                     <span className="role-badge" style={{
                         background: isPeer ? 'rgba(249, 115, 22, 0.2)' : 'rgba(139, 92, 246, 0.2)',
                         color: isPeer ? '#f97316' : '#8b5cf6',
