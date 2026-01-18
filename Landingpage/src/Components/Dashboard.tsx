@@ -1,3 +1,4 @@
+// Dashboard.tsx - Updated with peer console and online peer count
 
 import React, { useState, useEffect, useRef } from 'react';
 import { gsap } from 'gsap';
@@ -33,12 +34,15 @@ export const Dashboard: React.FC<ExtendedDashboardProps> = ({
     const [isOnline, setIsOnline] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [onlinePeersCount, setOnlinePeersCount] = useState<number>(0);
+    const [uptime, setUptime] = useState(0);
 
     const [resultsData, setResultsData] = useState<FullResultsResponse | null>(null);
     const [monitoringSessionId, setMonitoringSessionId] = useState<string | null>(null);
 
     const dashRef = useRef<HTMLDivElement>(null);
     const pollingInterval = useRef<number | null>(null);
+    const uptimeInterval = useRef<number | null>(null);
 
     const isPeer = userRole === 'peer';
     const isTrainer = userRole === 'trainer';
@@ -54,6 +58,32 @@ export const Dashboard: React.FC<ExtendedDashboardProps> = ({
             });
         }
     }, []);
+
+    // Uptime counter for peers
+    useEffect(() => {
+        if (isPeer && isOnline) {
+            uptimeInterval.current = window.setInterval(() => {
+                setUptime(prev => prev + 1);
+            }, 1000);
+
+            return () => {
+                if (uptimeInterval.current) {
+                    clearInterval(uptimeInterval.current);
+                }
+            };
+        } else {
+            setUptime(0);
+        }
+    }, [isPeer, isOnline]);
+
+    // Fetch online peers count for trainers
+    useEffect(() => {
+        if (isTrainer) {
+            fetchOnlinePeers();
+            const interval = setInterval(fetchOnlinePeers, 5000); // Poll every 5 seconds
+            return () => clearInterval(interval);
+        }
+    }, [isTrainer]);
 
     // Polling for training results
     useEffect(() => {
@@ -83,8 +113,20 @@ export const Dashboard: React.FC<ExtendedDashboardProps> = ({
             if (pollingInterval.current) {
                 clearInterval(pollingInterval.current);
             }
+            if (uptimeInterval.current) {
+                clearInterval(uptimeInterval.current);
+            }
         };
     }, []);
+
+    const fetchOnlinePeers = async () => {
+        try {
+            const data = await sessionAPI.getOnlinePeers();
+            setOnlinePeersCount(data.online_peers || 0);
+        } catch (err) {
+            console.error('Failed to fetch online peers:', err);
+        }
+    };
 
     const fetchFullResults = async (sessionId: string) => {
         try {
@@ -197,9 +239,9 @@ export const Dashboard: React.FC<ExtendedDashboardProps> = ({
             <div className="dash-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <div className="logo">
-                        <div className="logo-inner">âš¡</div>
+                        <div className="logo-inner">⚡</div>
                     </div>
-                    <h1 className="dash-title">Decentrify</h1>
+                    <h1 className="dash-title">HYPERTUNE</h1>
                     <span className="role-badge" style={{
                         background: isPeer ? 'rgba(249, 115, 22, 0.2)' : 'rgba(139, 92, 246, 0.2)',
                         color: isPeer ? '#f97316' : '#8b5cf6',
@@ -216,6 +258,36 @@ export const Dashboard: React.FC<ExtendedDashboardProps> = ({
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+                    {/* Online Peers Count for Trainer */}
+                    {isTrainer && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            padding: '0.5rem 1rem',
+                            background: 'rgba(34, 197, 94, 0.1)',
+                            border: '1px solid rgba(34, 197, 94, 0.3)',
+                            borderRadius: '8px'
+                        }}>
+                            <div style={{
+                                width: '8px',
+                                height: '8px',
+                                borderRadius: '50%',
+                                background: '#22c55e',
+                                boxShadow: '0 0 8px #22c55e',
+                                animation: 'pulse 2s ease-in-out infinite'
+                            }} />
+                            <span style={{
+                                fontSize: '0.75rem',
+                                fontFamily: 'monospace',
+                                color: '#22c55e',
+                                fontWeight: '700'
+                            }}>
+                                {onlinePeersCount} Peers Online
+                            </span>
+                        </div>
+                    )}
+
                     <span className={`status-badge ${isOnline ? 'status-online' : 'status-offline'}`}>
                         {isOnline ? 'ONLINE' : 'OFFLINE'}
                     </span>
@@ -254,8 +326,8 @@ export const Dashboard: React.FC<ExtendedDashboardProps> = ({
                 </div>
             </div>
 
-            {/* Training Graphs View */}
-            {monitoringSessionId && resultsData ? (
+            {/* Training Graphs View - Only for Trainers */}
+            {monitoringSessionId && resultsData && isTrainer ? (
                 <TrainingGraphs
                     resultsData={resultsData}
                     userRole={userRole}
@@ -344,6 +416,17 @@ export const Dashboard: React.FC<ExtendedDashboardProps> = ({
                                 userRole={userRole}
                                 onViewSession={viewSessionDetails}
                             />
+                        </div>
+                    )}
+
+                    {/* System Log - Only for Peers when online */}
+                    {isPeer && isOnline && (
+                        <div style={{
+                            marginTop: '3rem',
+                            paddingTop: '2rem',
+                            borderTop: '1px solid rgba(255, 255, 255, 0.1)'
+                        }}>
+
                         </div>
                     )}
                 </>
