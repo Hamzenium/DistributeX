@@ -1,5 +1,6 @@
 # Distributed P2P Machine Learning Training Platform 
 [Watch the Demo](https://www.youtube.com/watch?v=xXv5a8-iFg0) <br>
+
 A peer-to-peer distributed machine learning training system that enables collaborative model training across multiple nodes using message queues, cloud storage, and coordinated worker processes.
 
 ## Table of Contents
